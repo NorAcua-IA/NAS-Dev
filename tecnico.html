@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NorAcua Suite v3.0 — Técnico</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --c-bg:        #f8fafc;
+      --c-surface:   #ffffff;
+      --c-border:    #e2e8f0;
+      --c-text:      #1e293b;
+      --c-muted:     #64748b;
+      --c-primary:   #0ea5e9;
+      --c-green:     #10b981;
+      --c-amber:     #f59e0b;
+      --c-red:       #ef4444;
+      --c-indigo:    #6366f1;
+      --c-norblue:   #003366;
+      --radius:      8px;
+      --shadow:      0 1px 3px rgba(0,0,0,.08);
+    }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      background: var(--c-bg);
+      color: var(--c-text);
+      min-height: 100vh;
+    }
+
+    /* ── Login ── */
+    #login-screen {
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; padding: 1rem;
+    }
+    .login-card {
+      background: var(--c-surface); border-radius: var(--radius);
+      box-shadow: 0 4px 24px rgba(0,0,0,.12);
+      padding: 2rem; width: 100%; max-width: 380px;
+    }
+    .login-card h1 { font-size: 1.25rem; color: var(--c-norblue); margin-bottom: .25rem; }
+    .login-card p  { color: var(--c-muted); margin-bottom: 1.5rem; font-size: .875rem; }
+    .field         { display: flex; flex-direction: column; gap: .375rem; margin-bottom: 1rem; }
+    .field label   { font-weight: 500; font-size: .8125rem; }
+    .field input   {
+      border: 1px solid var(--c-border); border-radius: var(--radius);
+      padding: .5rem .75rem; font-size: .875rem; outline: none;
+      transition: border-color .15s;
+    }
+    .field input:focus { border-color: var(--c-primary); }
+    .btn-primary {
+      width: 100%; padding: .625rem; background: var(--c-norblue);
+      color: #fff; border: none; border-radius: var(--radius);
+      font-size: .875rem; font-weight: 500; cursor: pointer;
+      transition: background .15s;
+    }
+    .btn-primary:hover { background: #004488; }
+    .login-error { color: var(--c-red); font-size: .8125rem; margin-top: .75rem; text-align: center; }
+
+    /* ── Shell ── */
+    #app { display: none; flex-direction: column; min-height: 100vh; }
+    #app.visible { display: flex; }
+
+    header {
+      background: var(--c-norblue); color: #fff;
+      padding: 0 1.25rem; height: 52px;
+      display: flex; align-items: center; justify-content: space-between;
+      position: sticky; top: 0; z-index: 100;
+    }
+    .header-brand { font-weight: 700; font-size: .9375rem; }
+    .header-brand span { opacity: .6; font-weight: 400; font-size: .8125rem; margin-left: .5rem; }
+    .header-right { display: flex; align-items: center; gap: 1rem; }
+    .header-user  { font-size: .8125rem; opacity: .85; }
+    .btn-logout   {
+      background: rgba(255,255,255,.15); border: none; color: #fff;
+      padding: .3rem .75rem; border-radius: var(--radius); font-size: .8125rem;
+      cursor: pointer;
+    }
+    .btn-logout:hover { background: rgba(255,255,255,.25); }
+
+    nav {
+      background: var(--c-surface); border-bottom: 1px solid var(--c-border);
+      padding: 0 1.25rem; display: flex; overflow-x: auto;
+    }
+    .nav-tab {
+      padding: .75rem .875rem; font-size: .8125rem; font-weight: 500;
+      color: var(--c-muted); border: none; background: none;
+      cursor: pointer; border-bottom: 2px solid transparent;
+      white-space: nowrap; transition: color .15s, border-color .15s;
+    }
+    .nav-tab.active { color: var(--c-norblue); border-bottom-color: var(--c-norblue); }
+    .nav-tab:hover:not(.active) { color: var(--c-text); }
+
+    main { flex: 1; padding: 1.25rem; }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Cards ── */
+    .card { background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 1.25rem; }
+    .card-title { font-size: .9375rem; font-weight: 600; margin-bottom: 1rem; }
+
+    /* ── Lista de registros ── */
+    .reg-list { display: flex; flex-direction: column; gap: .75rem; }
+    .reg-item {
+      background: var(--c-surface); border: 1px solid var(--c-border);
+      border-radius: var(--radius); padding: 1rem;
+      border-left: 4px solid var(--c-border);
+    }
+    .reg-item.pendiente  { border-left-color: var(--c-amber); }
+    .reg-item.aprobado   { border-left-color: var(--c-green); }
+    .reg-item.rechazado  { border-left-color: var(--c-red); }
+    .reg-item.ofertada   { border-left-color: var(--c-indigo); }
+
+    .reg-header { display: flex; justify-content: space-between; align-items: flex-start; gap: .5rem; margin-bottom: .5rem; }
+    .reg-proy   { font-weight: 600; font-size: .875rem; }
+    .reg-fecha  { font-size: .75rem; color: var(--c-muted); white-space: nowrap; }
+    .reg-obs    { font-size: .8125rem; color: var(--c-muted); margin-top: .25rem; }
+
+    .badge {
+      display: inline-block; padding: .2rem .6rem; border-radius: 999px;
+      font-size: .6875rem; font-weight: 600; text-transform: uppercase;
+    }
+    .badge-pendiente  { background: #fef3c7; color: #92400e; }
+    .badge-aprobado   { background: #d1fae5; color: #065f46; }
+    .badge-rechazado  { background: #fee2e2; color: #991b1b; }
+    .badge-ofertada   { background: #e0e7ff; color: #3730a3; }
+    .badge-aprobada   { background: #d1fae5; color: #065f46; }
+    .badge-enviada    { background: #dbeafe; color: #1e40af; }
+
+    /* ── Supervisiones HSSE ── */
+    .hsse-list { display: flex; flex-direction: column; gap: .75rem; }
+    .hsse-item {
+      background: var(--c-surface); border: 1px solid var(--c-border);
+      border-radius: var(--radius); padding: 1rem;
+    }
+    .hsse-site  { font-weight: 600; }
+    .hsse-meta  { font-size: .8125rem; color: var(--c-muted); margin-top: .25rem; }
+
+    /* ── Loader / placeholder ── */
+    .loader     { text-align: center; padding: 3rem; color: var(--c-muted); }
+    .placeholder { text-align: center; padding: 4rem 2rem; color: var(--c-muted); }
+    .placeholder strong { display: block; font-size: 1.125rem; color: var(--c-text); margin-bottom: .5rem; }
+
+    /* ── Modal inactividad ── */
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 999; align-items: center; justify-content: center; }
+    .modal-overlay.visible { display: flex; }
+    .modal-box { background: var(--c-surface); border-radius: var(--radius); padding: 2rem; max-width: 360px; width: 90%; text-align: center; }
+    .modal-box h2 { margin-bottom: .75rem; }
+    .modal-box p  { color: var(--c-muted); margin-bottom: 1.5rem; font-size: .875rem; }
+    .modal-btns   { display: flex; gap: .75rem; justify-content: center; }
+    .btn-secondary { padding: .5rem 1.25rem; border: 1px solid var(--c-border); border-radius: var(--radius); background: var(--c-surface); font-size: .875rem; cursor: pointer; }
+  </style>
+</head>
+<body>
+
+<!-- ══ LOGIN ══ -->
+<div id="login-screen">
+  <div class="login-card">
+    <h1>NorAcua Suite</h1>
+    <p>Acceso técnicos · v3.0</p>
+    <div class="field">
+      <label for="inp-user">Usuario</label>
+      <input id="inp-user" type="text" autocomplete="username" />
+    </div>
+    <div class="field">
+      <label for="inp-pass">Contraseña</label>
+      <input id="inp-pass" type="password" autocomplete="current-password" />
+    </div>
+    <button class="btn-primary" id="btn-login">Entrar</button>
+    <div class="login-error" id="login-error"></div>
+  </div>
+</div>
+
+<!-- ══ APP SHELL ══ -->
+<div id="app">
+  <header>
+    <div class="header-brand">NorAcua <span>Técnicos v3.0</span></div>
+    <div class="header-right">
+      <span class="header-user" id="header-user"></span>
+      <button class="btn-logout" id="btn-logout">Salir</button>
+    </div>
+  </header>
+
+  <nav>
+    <button class="nav-tab active" data-tab="mis-actividades">Mis actividades</button>
+    <button class="nav-tab" data-tab="mis-supervisiones">Mis supervisiones</button>
+    <button class="nav-tab" data-tab="nueva-actividad">Nueva actividad</button>
+  </nav>
+
+  <main>
+    <!-- Mis actividades -->
+    <div class="tab-panel active" id="tab-mis-actividades">
+      <div class="loader" id="loader-actividades">Cargando tus actividades…</div>
+      <div class="reg-list" id="lista-actividades" style="display:none"></div>
+    </div>
+
+    <!-- Mis supervisiones HSSE -->
+    <div class="tab-panel" id="tab-mis-supervisiones">
+      <div class="loader" id="loader-hsse">Cargando supervisiones…</div>
+      <div class="hsse-list" id="lista-hsse" style="display:none"></div>
+    </div>
+
+    <!-- Nueva actividad -->
+    <div class="tab-panel" id="tab-nueva-actividad">
+      <div class="placeholder">
+        <strong>Nueva actividad</strong>
+        Formulario disponible cuando el preciario v3 esté cargado.
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ══ MODAL INACTIVIDAD ══ -->
+<div class="modal-overlay" id="modal-inactividad">
+  <div class="modal-box">
+    <h2>¿Sigues ahí?</h2>
+    <p>La sesión se cerrará en 5 minutos por inactividad.</p>
+    <div class="modal-btns">
+      <button class="btn-primary" id="btn-extender" style="width:auto;padding:.5rem 1.5rem">Continuar</button>
+      <button class="btn-secondary" id="btn-cerrar-modal">Cerrar sesión</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { iniciarSesion, cerrarSesion, iniciarSesionDesdeStorage, extenderSesion, getSesion, getUsuario } from './src/api/session.js';
+import { getRegistros }       from './src/api/registros.js';
+import { getSupervisiones }   from './src/api/hsse.js';
+import { fmtFecha }           from './src/utils/fmt.js';
+
+const $ = id => document.getElementById(id);
+
+function badge(estado) {
+  return `<span class="badge badge-${estado}">${estado}</span>`;
+}
+
+function mostrarApp(usuario) {
+  $('login-screen').style.display = 'none';
+  $('app').classList.add('visible');
+  $('header-user').textContent = usuario.nombre;
+  cargarActividades(usuario);
+}
+
+function mostrarLogin() {
+  $('app').classList.remove('visible');
+  $('login-screen').style.display = 'flex';
+}
+
+// ── Tabs ────────────────────────────────────────────────────
+
+let tabCargado = {};
+
+document.querySelectorAll('.nav-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    const tab = btn.dataset.tab;
+    $(`tab-${tab}`).classList.add('active');
+    if (!tabCargado[tab]) {
+      tabCargado[tab] = true;
+      const u = getUsuario();
+      if (tab === 'mis-supervisiones' && u) cargarHsse(u);
+    }
+  });
+});
+
+// ── Login ───────────────────────────────────────────────────
+
+async function tryLogin() {
+  const nombre   = $('inp-user').value.trim();
+  const password = $('inp-pass').value;
+  $('login-error').textContent = '';
+  $('btn-login').disabled = true;
+  $('btn-login').textContent = 'Entrando…';
+  try {
+    const { usuario } = await iniciarSesion(nombre, password, {
+      onAviso:  () => $('modal-inactividad').classList.add('visible'),
+      onLogout: () => mostrarLogin(),
+    });
+    if (usuario.rol !== 'tecnico') throw new Error('Este acceso es solo para técnicos');
+    mostrarApp(usuario);
+  } catch (e) {
+    $('login-error').textContent = e.message.includes('incorrectos') ? 'Usuario o contraseña incorrectos' : e.message;
+  } finally {
+    $('btn-login').disabled = false;
+    $('btn-login').textContent = 'Entrar';
+  }
+}
+
+$('btn-login').addEventListener('click', tryLogin);
+$('inp-pass').addEventListener('keydown', e => { if (e.key === 'Enter') tryLogin(); });
+$('btn-logout').addEventListener('click', () => cerrarSesion().then(mostrarLogin));
+$('btn-extender').addEventListener('click', () => { extenderSesion(); $('modal-inactividad').classList.remove('visible'); });
+$('btn-cerrar-modal').addEventListener('click', () => cerrarSesion().then(mostrarLogin));
+
+// ── Cargar actividades del técnico ──────────────────────────
+
+async function cargarActividades(usuario) {
+  const sesion = getSesion();
+  try {
+    const regs = await getRegistros({ usuarioId: sesion.sesionId, tecnicoId: usuario.id });
+
+    if (!regs.length) {
+      $('lista-actividades').innerHTML = '<div class="placeholder"><strong>Sin actividades</strong>No tienes actividades registradas aún.</div>';
+    } else {
+      $('lista-actividades').innerHTML = regs.map(r => `
+        <div class="reg-item ${r.estado}">
+          <div class="reg-header">
+            <div class="reg-proy">${r.proyecto?.nombre ?? '—'}</div>
+            <div class="reg-fecha">${fmtFecha(r.fecha)}</div>
+          </div>
+          <div>${badge(r.estado)}${r.estado_certif ? ' ' + badge(r.estado_certif) : ''}</div>
+          ${r.observaciones ? `<div class="reg-obs">${r.observaciones}</div>` : ''}
+        </div>
+      `).join('');
+    }
+
+    $('loader-actividades').style.display  = 'none';
+    $('lista-actividades').style.display   = 'flex';
+  } catch(e) {
+    $('loader-actividades').textContent = `Error: ${e.message}`;
+  }
+}
+
+// ── Cargar supervisiones HSSE ───────────────────────────────
+
+async function cargarHsse(usuario) {
+  const sesion = getSesion();
+  try {
+    const sups = await getSupervisiones({ usuarioId: sesion.sesionId, tecnicoId: usuario.id });
+
+    if (!sups.length) {
+      $('lista-hsse').innerHTML = '<div class="placeholder"><strong>Sin supervisiones</strong>No tienes supervisiones registradas.</div>';
+    } else {
+      $('lista-hsse').innerHTML = sups.map(s => `
+        <div class="hsse-item">
+          <div class="reg-header">
+            <div class="hsse-site">${s.datos_supervision?.site ?? '—'}</div>
+            <div class="reg-fecha">${fmtFecha(s.fecha)}</div>
+          </div>
+          <div>${badge(s.estado)}</div>
+          <div class="hsse-meta">${s.tipo} · ${s.zona} · ${s.horas_facturables ?? '—'} h</div>
+          ${s.datos_supervision?.comentarios ? `<div class="reg-obs">${s.datos_supervision.comentarios}</div>` : ''}
+        </div>
+      `).join('');
+    }
+
+    $('loader-hsse').style.display = 'none';
+    $('lista-hsse').style.display  = 'flex';
+  } catch(e) {
+    $('loader-hsse').textContent = `Error: ${e.message}`;
+  }
+}
+
+// ── Arrancar ────────────────────────────────────────────────
+
+(async () => {
+  const sesion = await iniciarSesionDesdeStorage();
+  if (sesion && sesion.usuario?.rol === 'tecnico') {
+    mostrarApp(sesion.usuario);
+  }
+})();
+</script>
+</body>
+</html>

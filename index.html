@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NorAcua Suite v3.0 — Admin</title>
+  <style>
+    /* ── Reset y variables ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --c-bg:        #f8fafc;
+      --c-surface:   #ffffff;
+      --c-border:    #e2e8f0;
+      --c-text:      #1e293b;
+      --c-muted:     #64748b;
+      --c-primary:   #0ea5e9;
+      --c-primary-d: #0284c7;
+      --c-green:     #10b981;
+      --c-amber:     #f59e0b;
+      --c-red:       #ef4444;
+      --c-indigo:    #6366f1;
+      --c-norblue:   #003366;   /* Azul corporativo NorAcua */
+      --radius:      8px;
+      --shadow:      0 1px 3px rgba(0,0,0,.08);
+    }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      background: var(--c-bg);
+      color: var(--c-text);
+      min-height: 100vh;
+    }
+
+    /* ── Login ── */
+    #login-screen {
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; padding: 1rem;
+    }
+    .login-card {
+      background: var(--c-surface); border-radius: var(--radius);
+      box-shadow: 0 4px 24px rgba(0,0,0,.12);
+      padding: 2rem; width: 100%; max-width: 380px;
+    }
+    .login-card h1 { font-size: 1.25rem; color: var(--c-norblue); margin-bottom: .25rem; }
+    .login-card p  { color: var(--c-muted); margin-bottom: 1.5rem; font-size: .875rem; }
+    .field         { display: flex; flex-direction: column; gap: .375rem; margin-bottom: 1rem; }
+    .field label   { font-weight: 500; font-size: .8125rem; }
+    .field input   {
+      border: 1px solid var(--c-border); border-radius: var(--radius);
+      padding: .5rem .75rem; font-size: .875rem; outline: none;
+      transition: border-color .15s;
+    }
+    .field input:focus { border-color: var(--c-primary); }
+    .btn-primary {
+      width: 100%; padding: .625rem; background: var(--c-norblue);
+      color: #fff; border: none; border-radius: var(--radius);
+      font-size: .875rem; font-weight: 500; cursor: pointer;
+      transition: background .15s;
+    }
+    .btn-primary:hover  { background: #004488; }
+    .btn-primary:active { background: #002244; }
+    .login-error { color: var(--c-red); font-size: .8125rem; margin-top: .75rem; text-align: center; }
+
+    /* ── Shell ── */
+    #app { display: none; flex-direction: column; min-height: 100vh; }
+    #app.visible { display: flex; }
+
+    header {
+      background: var(--c-norblue); color: #fff;
+      padding: 0 1.5rem; height: 52px;
+      display: flex; align-items: center; justify-content: space-between;
+      position: sticky; top: 0; z-index: 100;
+    }
+    .header-brand { font-weight: 700; font-size: .9375rem; letter-spacing: -.01em; }
+    .header-brand span { opacity: .6; font-weight: 400; font-size: .8125rem; margin-left: .5rem; }
+    .header-right { display: flex; align-items: center; gap: 1rem; }
+    .header-user  { font-size: .8125rem; opacity: .85; }
+    .btn-logout   {
+      background: rgba(255,255,255,.15); border: none; color: #fff;
+      padding: .3rem .75rem; border-radius: var(--radius); font-size: .8125rem;
+      cursor: pointer; transition: background .15s;
+    }
+    .btn-logout:hover { background: rgba(255,255,255,.25); }
+
+    nav {
+      background: var(--c-surface); border-bottom: 1px solid var(--c-border);
+      padding: 0 1.5rem; display: flex; gap: 0; overflow-x: auto;
+    }
+    .nav-tab {
+      padding: .75rem 1rem; font-size: .8125rem; font-weight: 500;
+      color: var(--c-muted); border: none; background: none;
+      cursor: pointer; border-bottom: 2px solid transparent;
+      white-space: nowrap; transition: color .15s, border-color .15s;
+    }
+    .nav-tab.active { color: var(--c-norblue); border-bottom-color: var(--c-norblue); }
+    .nav-tab:hover:not(.active) { color: var(--c-text); }
+
+    main { flex: 1; padding: 1.5rem; max-width: 1400px; width: 100%; margin: 0 auto; }
+
+    /* ── Paneles de pestaña ── */
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--c-surface); border: 1px solid var(--c-border);
+      border-radius: var(--radius); box-shadow: var(--shadow);
+      padding: 1.25rem;
+    }
+    .card-title { font-size: .9375rem; font-weight: 600; margin-bottom: 1rem; }
+
+    /* ── KPIs ── */
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+    .kpi-card { background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--radius); padding: 1rem 1.25rem; }
+    .kpi-label { font-size: .75rem; color: var(--c-muted); text-transform: uppercase; letter-spacing: .05em; }
+    .kpi-value { font-size: 1.5rem; font-weight: 700; margin-top: .25rem; }
+
+    /* ── Tabla ── */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; font-size: .75rem; font-weight: 600; color: var(--c-muted); text-transform: uppercase; letter-spacing: .05em; padding: .5rem .75rem; border-bottom: 1px solid var(--c-border); }
+    td { padding: .625rem .75rem; border-bottom: 1px solid var(--c-border); font-size: .8125rem; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--c-bg); }
+
+    /* ── Badge estado ── */
+    .badge {
+      display: inline-block; padding: .2rem .6rem; border-radius: 999px;
+      font-size: .6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+    }
+    .badge-pendiente  { background: #fef3c7; color: #92400e; }
+    .badge-aprobado   { background: #d1fae5; color: #065f46; }
+    .badge-rechazado  { background: #fee2e2; color: #991b1b; }
+    .badge-ofertada   { background: #e0e7ff; color: #3730a3; }
+    .badge-enviada    { background: #dbeafe; color: #1e40af; }
+    .badge-cobrada    { background: #d1fae5; color: #065f46; }
+    .badge-vencida    { background: #fee2e2; color: #991b1b; }
+    .badge-anulada    { background: #f1f5f9; color: #475569; }
+
+    /* ── Modal inactividad ── */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.5); z-index: 999;
+      align-items: center; justify-content: center;
+    }
+    .modal-overlay.visible { display: flex; }
+    .modal-box {
+      background: var(--c-surface); border-radius: var(--radius);
+      padding: 2rem; max-width: 380px; width: 90%; text-align: center;
+    }
+    .modal-box h2 { margin-bottom: .75rem; }
+    .modal-box p  { color: var(--c-muted); margin-bottom: 1.5rem; font-size: .875rem; }
+    .modal-btns   { display: flex; gap: .75rem; justify-content: center; }
+    .btn-secondary {
+      padding: .5rem 1.25rem; border: 1px solid var(--c-border);
+      border-radius: var(--radius); background: var(--c-surface);
+      font-size: .875rem; cursor: pointer;
+    }
+
+    /* ── Loader ── */
+    .loader { text-align: center; padding: 3rem; color: var(--c-muted); }
+
+    /* ── Placeholder ── */
+    .placeholder {
+      text-align: center; padding: 4rem 2rem;
+      color: var(--c-muted); font-size: .9375rem;
+    }
+    .placeholder strong { display: block; font-size: 1.125rem; color: var(--c-text); margin-bottom: .5rem; }
+  </style>
+</head>
+<body>
+
+<!-- ══ LOGIN ══ -->
+<div id="login-screen">
+  <div class="login-card">
+    <h1>NorAcua Suite</h1>
+    <p>Acceso administración · v3.0</p>
+    <div class="field">
+      <label for="inp-user">Usuario</label>
+      <input id="inp-user" type="text" autocomplete="username" placeholder="Daniel / Ignacio" />
+    </div>
+    <div class="field">
+      <label for="inp-pass">Contraseña</label>
+      <input id="inp-pass" type="password" autocomplete="current-password" />
+    </div>
+    <button class="btn-primary" id="btn-login">Entrar</button>
+    <div class="login-error" id="login-error"></div>
+  </div>
+</div>
+
+<!-- ══ APP SHELL ══ -->
+<div id="app">
+  <header>
+    <div class="header-brand">NorAcua Suite <span>v3.0 · Admin</span></div>
+    <div class="header-right">
+      <span class="header-user" id="header-user"></span>
+      <button class="btn-logout" id="btn-logout">Salir</button>
+    </div>
+  </header>
+
+  <nav>
+    <button class="nav-tab active" data-tab="actividades">Actividades</button>
+    <button class="nav-tab" data-tab="certificacion">Certificación</button>
+    <button class="nav-tab" data-tab="facturacion">Facturación</button>
+    <button class="nav-tab" data-tab="hsse">HSSE</button>
+    <button class="nav-tab" data-tab="proyectos">Proyectos</button>
+    <button class="nav-tab" data-tab="preciario">Preciario</button>
+    <button class="nav-tab" data-tab="config">Config</button>
+  </nav>
+
+  <main>
+    <!-- Actividades -->
+    <div class="tab-panel active" id="tab-actividades">
+      <div class="loader" id="loader-actividades">Cargando actividades…</div>
+      <div id="content-actividades" style="display:none">
+        <div class="kpi-grid" id="kpis-actividades"></div>
+        <div class="card">
+          <div class="card-title">Actividades</div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Fecha</th><th>Técnico</th><th>Proyecto</th><th>Zona</th>
+                  <th>Estado</th><th>Certif.</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-actividades"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Certificación -->
+    <div class="tab-panel" id="tab-certificacion">
+      <div class="placeholder"><strong>Certificación</strong>Pendiente de implementar en v3.0</div>
+    </div>
+
+    <!-- Facturación -->
+    <div class="tab-panel" id="tab-facturacion">
+      <div class="loader" id="loader-facturacion">Cargando facturas…</div>
+      <div id="content-facturacion" style="display:none">
+        <div class="kpi-grid" id="kpis-facturacion"></div>
+        <div class="card">
+          <div class="card-title">Facturas</div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Número</th><th>Tipo</th><th>Cliente</th><th>Fecha</th>
+                  <th>Base</th><th>Total</th><th>Estado</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-facturas"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- HSSE -->
+    <div class="tab-panel" id="tab-hsse">
+      <div class="placeholder"><strong>HSSE Supervisiones</strong>Pendiente de implementar en v3.0</div>
+    </div>
+
+    <!-- Proyectos -->
+    <div class="tab-panel" id="tab-proyectos">
+      <div class="placeholder"><strong>Proyectos</strong>Pendiente de implementar en v3.0</div>
+    </div>
+
+    <!-- Preciario -->
+    <div class="tab-panel" id="tab-preciario">
+      <div class="placeholder">
+        <strong>Preciario v3</strong>
+        Disponible en aproximadamente una semana — pendiente de aprobación del nuevo catálogo de precios.
+      </div>
+    </div>
+
+    <!-- Config -->
+    <div class="tab-panel" id="tab-config">
+      <div class="placeholder"><strong>Configuración</strong>Pendiente de implementar en v3.0</div>
+    </div>
+  </main>
+</div>
+
+<!-- ══ MODAL INACTIVIDAD ══ -->
+<div class="modal-overlay" id="modal-inactividad">
+  <div class="modal-box">
+    <h2>¿Sigues ahí?</h2>
+    <p>La sesión se cerrará en 5 minutos por inactividad.</p>
+    <div class="modal-btns">
+      <button class="btn-primary" id="btn-extender" style="width:auto;padding:.5rem 1.5rem">Continuar</button>
+      <button class="btn-secondary" id="btn-cerrar-modal">Cerrar sesión</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { iniciarSesion, cerrarSesion, iniciarSesionDesdeStorage, extenderSesion, getSesion, getUsuario } from './src/api/session.js';
+import { getRegistros } from './src/api/registros.js';
+import { getFacturas }  from './src/api/facturas.js';
+import { fmtFecha, fmtEuros } from './src/utils/fmt.js';
+
+// ── Helpers UI ──────────────────────────────────────────────
+
+const $ = id => document.getElementById(id);
+
+function badge(estado) {
+  return `<span class="badge badge-${estado}">${estado}</span>`;
+}
+
+function mostrarApp(usuario) {
+  $('login-screen').style.display = 'none';
+  $('app').classList.add('visible');
+  $('header-user').textContent = usuario.nombre;
+  cargarActividades();
+}
+
+function mostrarLogin() {
+  $('app').classList.remove('visible');
+  $('login-screen').style.display = 'flex';
+}
+
+// ── Tabs ────────────────────────────────────────────────────
+
+let tabCargado = {};
+
+document.querySelectorAll('.nav-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    const tab = btn.dataset.tab;
+    $(`tab-${tab}`).classList.add('active');
+    if (!tabCargado[tab]) {
+      tabCargado[tab] = true;
+      if (tab === 'facturacion') cargarFacturas();
+    }
+  });
+});
+
+// ── Login ───────────────────────────────────────────────────
+
+async function tryLogin() {
+  const nombre   = $('inp-user').value.trim();
+  const password = $('inp-pass').value;
+  $('login-error').textContent = '';
+  $('btn-login').disabled = true;
+  $('btn-login').textContent = 'Entrando…';
+  try {
+    const { usuario } = await iniciarSesion(nombre, password, {
+      onAviso:  () => $('modal-inactividad').classList.add('visible'),
+      onLogout: () => { mostrarLogin(); },
+    });
+    if (usuario.rol !== 'admin') throw new Error('Acceso restringido a administradores');
+    mostrarApp(usuario);
+  } catch (e) {
+    $('login-error').textContent = e.message.includes('incorrectos') ? 'Usuario o contraseña incorrectos' : e.message;
+  } finally {
+    $('btn-login').disabled = false;
+    $('btn-login').textContent = 'Entrar';
+  }
+}
+
+$('btn-login').addEventListener('click', tryLogin);
+$('inp-pass').addEventListener('keydown', e => { if (e.key === 'Enter') tryLogin(); });
+$('btn-logout').addEventListener('click', () => cerrarSesion().then(mostrarLogin));
+$('btn-extender').addEventListener('click', () => { extenderSesion(); $('modal-inactividad').classList.remove('visible'); });
+$('btn-cerrar-modal').addEventListener('click', () => cerrarSesion().then(mostrarLogin));
+
+// ── Cargar actividades ──────────────────────────────────────
+
+async function cargarActividades() {
+  if (tabCargado['actividades-data']) return;
+  tabCargado['actividades-data'] = true;
+
+  const sesion = getSesion();
+  try {
+    const regs = await getRegistros({ usuarioId: sesion.sesionId });
+
+    // KPIs
+    const pendientes  = regs.filter(r => r.estado === 'pendiente').length;
+    const aprobados   = regs.filter(r => r.estado === 'aprobado').length;
+    const ofertadas   = regs.filter(r => r.estado === 'ofertada').length;
+    $('kpis-actividades').innerHTML = `
+      <div class="kpi-card"><div class="kpi-label">Total</div><div class="kpi-value">${regs.length}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Pendientes</div><div class="kpi-value" style="color:var(--c-amber)">${pendientes}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Aprobados</div><div class="kpi-value" style="color:var(--c-green)">${aprobados}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Ofertadas</div><div class="kpi-value" style="color:var(--c-indigo)">${ofertadas}</div></div>
+    `;
+
+    // Tabla
+    $('tbody-actividades').innerHTML = regs.map(r => `
+      <tr>
+        <td>${fmtFecha(r.fecha)}</td>
+        <td>${r.tecnico?.nombre ?? '—'}</td>
+        <td>${r.proyecto?.nombre ?? '—'}</td>
+        <td>${r.proyecto?.zona ?? '—'}</td>
+        <td>${badge(r.estado)}</td>
+        <td>${r.estado_certif ? badge(r.estado_certif) : '—'}</td>
+      </tr>
+    `).join('');
+
+    $('loader-actividades').style.display   = 'none';
+    $('content-actividades').style.display  = 'block';
+  } catch(e) {
+    $('loader-actividades').textContent = `Error: ${e.message}`;
+  }
+}
+
+// ── Cargar facturas ─────────────────────────────────────────
+
+async function cargarFacturas() {
+  const sesion = getSesion();
+  try {
+    const facts = await getFacturas({ usuarioId: sesion.sesionId });
+
+    const totalBase  = facts.reduce((a, f) => a + Number(f.base_imponible || 0), 0);
+    const totalTotal = facts.reduce((a, f) => a + Number(f.total || 0), 0);
+    $('kpis-facturacion').innerHTML = `
+      <div class="kpi-card"><div class="kpi-label">Facturas</div><div class="kpi-value">${facts.length}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Base total</div><div class="kpi-value" style="font-size:1.125rem">${fmtEuros(totalBase)}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Total c/IVA</div><div class="kpi-value" style="font-size:1.125rem">${fmtEuros(totalTotal)}</div></div>
+    `;
+
+    $('tbody-facturas').innerHTML = facts.map(f => `
+      <tr>
+        <td><strong>${f.numero}</strong></td>
+        <td>${f.tipo}</td>
+        <td>${f.cliente?.nombre ?? '—'}</td>
+        <td>${fmtFecha(f.fecha)}</td>
+        <td>${fmtEuros(f.base_imponible)}</td>
+        <td><strong>${fmtEuros(f.total)}</strong></td>
+        <td>${badge(f.estado.toLowerCase())}</td>
+      </tr>
+    `).join('');
+
+    $('loader-facturacion').style.display  = 'none';
+    $('content-facturacion').style.display = 'block';
+  } catch(e) {
+    $('loader-facturacion').textContent = `Error: ${e.message}`;
+  }
+}
+
+// ── Arrancar ────────────────────────────────────────────────
+
+(async () => {
+  const sesion = await iniciarSesionDesdeStorage();
+  if (sesion && sesion.usuario?.rol === 'admin') {
+    mostrarApp(sesion.usuario);
+  }
+})();
+</script>
+</body>
+</html>
