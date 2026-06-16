@@ -1,455 +1,1089 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>NorAcua Suite v3.0 — Admin</title>
   <style>
-    /* ── Reset y variables ── */
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    :root {
-      --c-bg:        #f8fafc;
-      --c-surface:   #ffffff;
-      --c-border:    #e2e8f0;
-      --c-text:      #1e293b;
-      --c-muted:     #64748b;
-      --c-primary:   #0ea5e9;
-      --c-primary-d: #0284c7;
-      --c-green:     #10b981;
-      --c-amber:     #f59e0b;
-      --c-red:       #ef4444;
-      --c-indigo:    #6366f1;
-      --c-norblue:   #003366;   /* Azul corporativo NorAcua */
-      --radius:      8px;
-      --shadow:      0 1px 3px rgba(0,0,0,.08);
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:'Segoe UI',-apple-system,sans-serif;background:#f4f6f8;color:#1a1a1a;font-size:13px;}
+    :root{
+      --bg:#f4f6f8;--card:#fff;--cardL:#f0f3f6;--primary:#00c8c8;--pGlow:rgba(0,200,200,.10);
+      --text:#1a1a1a;--muted:#8a9199;--textSec:#555e66;--border:#dde2e8;
+      --success:#1a9e7a;--sucBg:rgba(26,158,122,.10);
+      --warn:#d48a10;--warnBg:rgba(212,138,16,.10);
+      --danger:#d03030;--danBg:rgba(208,48,48,.10);
+      --inputBg:#f9fafb;--purple:#7c3aed;--purpleBg:rgba(124,58,237,.10);
+      --navy:#003057;--blue:#3b82f6;--teal:#0d9488;
     }
-
-    body {
-      font-family: system-ui, -apple-system, sans-serif;
-      font-size: 14px;
-      background: var(--c-bg);
-      color: var(--c-text);
-      min-height: 100vh;
-    }
-
-    /* ── Login ── */
-    #login-screen {
-      display: flex; align-items: center; justify-content: center;
-      min-height: 100vh; padding: 1rem;
-    }
-    .login-card {
-      background: var(--c-surface); border-radius: var(--radius);
-      box-shadow: 0 4px 24px rgba(0,0,0,.12);
-      padding: 2rem; width: 100%; max-width: 380px;
-    }
-    .login-card h1 { font-size: 1.25rem; color: var(--c-norblue); margin-bottom: .25rem; }
-    .login-card p  { color: var(--c-muted); margin-bottom: 1.5rem; font-size: .875rem; }
-    .field         { display: flex; flex-direction: column; gap: .375rem; margin-bottom: 1rem; }
-    .field label   { font-weight: 500; font-size: .8125rem; }
-    .field input   {
-      border: 1px solid var(--c-border); border-radius: var(--radius);
-      padding: .5rem .75rem; font-size: .875rem; outline: none;
-      transition: border-color .15s;
-    }
-    .field input:focus { border-color: var(--c-primary); }
-    .btn-primary {
-      width: 100%; padding: .625rem; background: var(--c-norblue);
-      color: #fff; border: none; border-radius: var(--radius);
-      font-size: .875rem; font-weight: 500; cursor: pointer;
-      transition: background .15s;
-    }
-    .btn-primary:hover  { background: #004488; }
-    .btn-primary:active { background: #002244; }
-    .login-error { color: var(--c-red); font-size: .8125rem; margin-top: .75rem; text-align: center; }
-
-    /* ── Shell ── */
-    #app { display: none; flex-direction: column; min-height: 100vh; }
-    #app.visible { display: flex; }
-
-    header {
-      background: var(--c-norblue); color: #fff;
-      padding: 0 1.5rem; height: 52px;
-      display: flex; align-items: center; justify-content: space-between;
-      position: sticky; top: 0; z-index: 100;
-    }
-    .header-brand { font-weight: 700; font-size: .9375rem; letter-spacing: -.01em; }
-    .header-brand span { opacity: .6; font-weight: 400; font-size: .8125rem; margin-left: .5rem; }
-    .header-right { display: flex; align-items: center; gap: 1rem; }
-    .header-user  { font-size: .8125rem; opacity: .85; }
-    .btn-logout   {
-      background: rgba(255,255,255,.15); border: none; color: #fff;
-      padding: .3rem .75rem; border-radius: var(--radius); font-size: .8125rem;
-      cursor: pointer; transition: background .15s;
-    }
-    .btn-logout:hover { background: rgba(255,255,255,.25); }
-
-    nav {
-      background: var(--c-surface); border-bottom: 1px solid var(--c-border);
-      padding: 0 1.5rem; display: flex; gap: 0; overflow-x: auto;
-    }
-    .nav-tab {
-      padding: .75rem 1rem; font-size: .8125rem; font-weight: 500;
-      color: var(--c-muted); border: none; background: none;
-      cursor: pointer; border-bottom: 2px solid transparent;
-      white-space: nowrap; transition: color .15s, border-color .15s;
-    }
-    .nav-tab.active { color: var(--c-norblue); border-bottom-color: var(--c-norblue); }
-    .nav-tab:hover:not(.active) { color: var(--c-text); }
-
-    main { flex: 1; padding: 1.5rem; max-width: 1400px; width: 100%; margin: 0 auto; }
-
-    /* ── Paneles de pestaña ── */
-    .tab-panel { display: none; }
-    .tab-panel.active { display: block; }
-
+    /* ── Header ── */
+    #hdr{background:var(--card);border-bottom:2px solid var(--primary);padding:7px 14px;
+      display:flex;align-items:center;justify-content:space-between;
+      position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.06);}
+    #hdr .logo{display:flex;align-items:center;gap:10px;}
+    #hdr .logo span{font-size:15px;font-weight:800;color:var(--navy);letter-spacing:-.3px;}
+    #hdr .logo small{font-size:10px;color:var(--muted);font-weight:400;}
+    /* Módulos nav */
+    .mod-nav{display:flex;gap:2px;background:#f0f3f6;border-radius:7px;padding:3px;border:1px solid var(--border);}
+    .mod-btn{background:transparent;color:var(--textSec);border:none;border-radius:5px;
+      padding:6px 11px;font-size:11px;font-weight:500;cursor:pointer;font-family:inherit;
+      display:flex;align-items:center;gap:4px;transition:all .15s;}
+    .mod-btn.active{background:var(--navy);color:#fff;font-weight:700;}
+    /* Sub-nav */
+    .sub-nav{display:flex;gap:1px;background:var(--cardL);border-radius:7px;padding:3px;border:1px solid var(--border);}
+    .sub-btn{background:transparent;color:var(--textSec);border:1px solid transparent;border-radius:5px;
+      padding:5px 10px;font-size:11px;font-weight:500;cursor:pointer;font-family:inherit;
+      display:flex;align-items:center;gap:4px;}
+    .sub-btn.active{background:var(--pGlow);color:var(--primary);border-color:rgba(0,200,200,.3);font-weight:700;}
+    /* user chip */
+    .user-chip{font-size:11px;color:var(--textSec);background:var(--cardL);
+      padding:5px 10px;border-radius:7px;border:1px solid var(--border);}
+    .user-chip b{color:var(--primary);}
+    .btn-icon{background:var(--cardL);border:1px solid var(--border);border-radius:7px;
+      color:var(--textSec);cursor:pointer;padding:6px 8px;display:flex;}
+    /* ── Main ── */
+    #main{max-width:1060px;margin:0 auto;padding:18px 14px;}
     /* ── Cards ── */
-    .card {
-      background: var(--c-surface); border: 1px solid var(--c-border);
-      border-radius: var(--radius); box-shadow: var(--shadow);
-      padding: 1.25rem;
-    }
-    .card-title { font-size: .9375rem; font-weight: 600; margin-bottom: 1rem; }
-
-    /* ── KPIs ── */
-    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
-    .kpi-card { background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--radius); padding: 1rem 1.25rem; }
-    .kpi-label { font-size: .75rem; color: var(--c-muted); text-transform: uppercase; letter-spacing: .05em; }
-    .kpi-value { font-size: 1.5rem; font-weight: 700; margin-top: .25rem; }
-
-    /* ── Tabla ── */
-    .table-wrap { overflow-x: auto; }
-    table { width: 100%; border-collapse: collapse; }
-    th { text-align: left; font-size: .75rem; font-weight: 600; color: var(--c-muted); text-transform: uppercase; letter-spacing: .05em; padding: .5rem .75rem; border-bottom: 1px solid var(--c-border); }
-    td { padding: .625rem .75rem; border-bottom: 1px solid var(--c-border); font-size: .8125rem; }
-    tr:last-child td { border-bottom: none; }
-    tr:hover td { background: var(--c-bg); }
-
-    /* ── Badge estado ── */
-    .badge {
-      display: inline-block; padding: .2rem .6rem; border-radius: 999px;
-      font-size: .6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
-    }
-    .badge-pendiente  { background: #fef3c7; color: #92400e; }
-    .badge-aprobado   { background: #d1fae5; color: #065f46; }
-    .badge-rechazado  { background: #fee2e2; color: #991b1b; }
-    .badge-ofertada   { background: #e0e7ff; color: #3730a3; }
-    .badge-enviada    { background: #dbeafe; color: #1e40af; }
-    .badge-cobrada    { background: #d1fae5; color: #065f46; }
-    .badge-vencida    { background: #fee2e2; color: #991b1b; }
-    .badge-anulada    { background: #f1f5f9; color: #475569; }
-
-    /* ── Modal inactividad ── */
-    .modal-overlay {
-      display: none; position: fixed; inset: 0;
-      background: rgba(0,0,0,.5); z-index: 999;
-      align-items: center; justify-content: center;
-    }
-    .modal-overlay.visible { display: flex; }
-    .modal-box {
-      background: var(--c-surface); border-radius: var(--radius);
-      padding: 2rem; max-width: 380px; width: 90%; text-align: center;
-    }
-    .modal-box h2 { margin-bottom: .75rem; }
-    .modal-box p  { color: var(--c-muted); margin-bottom: 1.5rem; font-size: .875rem; }
-    .modal-btns   { display: flex; gap: .75rem; justify-content: center; }
-    .btn-secondary {
-      padding: .5rem 1.25rem; border: 1px solid var(--c-border);
-      border-radius: var(--radius); background: var(--c-surface);
-      font-size: .875rem; cursor: pointer;
-    }
-
-    /* ── Loader ── */
-    .loader { text-align: center; padding: 3rem; color: var(--c-muted); }
-
+    .card{background:var(--card);border:1px solid var(--border);border-radius:10px;
+      box-shadow:0 1px 3px rgba(0,0,0,.06);padding:14px;}
+    /* ── KPI grid ── */
+    .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;}
+    .kpi-card{background:var(--card);border:1px solid var(--border);border-radius:10px;
+      padding:14px 16px;cursor:default;}
+    .kpi-card.click{cursor:pointer;}
+    .kpi-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:600;}
+    .kpi-value{font-size:26px;font-weight:800;line-height:1;margin-top:4px;}
+    .kpi-sub{font-size:11px;color:var(--muted);margin-top:2px;}
+    .kpi-detail{font-size:11px;margin-top:4px;}
+    /* ── Registro cards ── */
+    .sec-title{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;
+      letter-spacing:.1em;margin-bottom:8px;}
+    .proy-hdr{background:var(--navy);color:#fff;border-radius:8px 8px 0 0;
+      padding:6px 14px;display:flex;justify-content:space-between;align-items:center;margin-top:12px;}
+    .proy-hdr:first-child{margin-top:0;}
+    .proy-hdr .pn{font-weight:700;font-size:13px;}
+    .proy-hdr .ps{font-size:11px;opacity:.8;}
+    .reg-card{border:1px solid var(--border);overflow:hidden;background:var(--card);}
+    .reg-card:last-child{border-radius:0 0 8px 8px;}
+    .reg-hdr{display:flex;justify-content:space-between;align-items:center;
+      padding:7px 12px;cursor:pointer;border-bottom:1px solid transparent;}
+    .reg-hdr.pendiente{background:#fef3c7;border-color:#d48a10;}
+    .reg-hdr.aprobado{background:#dbeafe;border-color:#3b82f6;}
+    .reg-hdr.rechazado{background:#fee2e2;border-color:#d03030;}
+    .reg-hdr.ofertada{background:#ede9fe;border-color:#7c3aed;}
+    .reg-hdr.certif_oferta{background:#d1fae5;border-color:#059669;}
+    .reg-hdr.certificado{background:#ccfbf1;border-color:#0d9488;}
+    .reg-body{padding:10px 12px;border-top:1px solid var(--border);}
+    /* ── Badges ── */
+    .bdg{display:inline-block;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;text-transform:uppercase;}
+    .bdg-pendiente{background:#fef3c7;color:#92400e;}
+    .bdg-aprobado{background:#dbeafe;color:#1d4ed8;}
+    .bdg-rechazado{background:#fee2e2;color:#991b1b;}
+    .bdg-ofertada{background:#ede9fe;color:#5b21b6;}
+    .bdg-certif_oferta{background:#d1fae5;color:#065f46;}
+    .bdg-certificado{background:#ccfbf1;color:#0f766e;}
+    .bdg-finalizado{background:#d1fae5;color:#065f46;}
+    .bdg-enviada{background:#dbeafe;color:#1d4ed8;}
+    .bdg-aprobada{background:#d1fae5;color:#065f46;}
+    /* fact estados */
+    .bdg-Enviada{background:#f5f3ff;color:#5b21b6;}
+    .bdg-Cobrada{background:#d1fae5;color:#065f46;}
+    .bdg-Borrador{background:#f9fafb;color:#6b7280;border:1px solid #e5e7eb;}
+    .bdg-Vencida{background:#fee2e2;color:#991b1b;}
+    .bdg-Anulada{background:#f1f5f9;color:#475569;}
+    /* ── Botones ── */
+    .btn{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:6px;
+      font-size:11px;font-weight:600;cursor:pointer;border:none;font-family:inherit;transition:all .15s;}
+    .btn-primary{background:var(--navy);color:#fff;}
+    .btn-primary:hover{background:#004080;}
+    .btn-success{background:var(--success);color:#fff;}
+    .btn-success:hover{background:#157a5e;}
+    .btn-danger{background:var(--danger);color:#fff;}
+    .btn-danger:hover{background:#b02020;}
+    .btn-ghost{background:transparent;color:var(--textSec);border:1px solid var(--border);}
+    .btn-ghost:hover{background:var(--cardL);}
+    .btn-sm{padding:4px 9px;font-size:10px;}
+    /* ── Filtros ── */
+    .filtros{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:11px;}
+    .filtros input,.filtros select{padding:5px 9px;border:1px solid var(--border);
+      border-radius:5px;font-size:11px;font-family:inherit;background:var(--inputBg);outline:none;}
+    /* ── Tabla facturas ── */
+    .tabla{width:100%;border-collapse:collapse;}
+    .tabla th{text-align:left;font-size:10px;font-weight:700;color:var(--muted);
+      text-transform:uppercase;letter-spacing:.05em;padding:6px 10px;border-bottom:2px solid var(--border);}
+    .tabla td{padding:8px 10px;border-bottom:1px solid var(--border);font-size:12px;vertical-align:middle;}
+    .tabla tr:hover td{background:var(--cardL);}
+    .tabla tr:last-child td{border-bottom:none;}
+    /* ── Login ── */
+    #login{min-height:100vh;display:flex;align-items:center;justify-content:center;background:#eef1f5;}
+    .login-card{background:var(--card);border-radius:16px;padding:38px;width:90%;max-width:400px;
+      box-shadow:0 2px 24px rgba(0,0,0,.10);border:1px solid var(--border);position:relative;}
+    .login-card::before{content:'';position:absolute;top:0;left:15%;right:15%;height:3px;
+      background:var(--primary);border-radius:0 0 3px 3px;}
+    .login-brand{text-align:center;margin-bottom:24px;padding-top:6px;}
+    .login-brand h1{font-size:22px;font-weight:800;color:var(--navy);}
+    .login-brand small{font-size:10px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;}
+    .field{margin-bottom:13px;}
+    .field label{display:block;font-size:11px;font-weight:600;margin-bottom:4px;color:var(--textSec);}
+    .field select,.field input{width:100%;padding:9px 11px;border:1px solid var(--border);
+      border-radius:8px;font-size:13px;font-family:inherit;background:var(--inputBg);outline:none;}
+    .field select:focus,.field input:focus{border-color:var(--primary);}
+    /* ── Modal ── */
+    .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;
+      align-items:center;justify-content:center;}
+    .overlay.show{display:flex;}
+    .modal-box{background:var(--card);border-radius:12px;padding:24px;width:90%;max-width:460px;
+      max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.2);}
+    .modal-title{font-size:15px;font-weight:700;margin-bottom:16px;}
+    /* ── Config ── */
+    .cfg-section{margin-bottom:20px;}
+    .cfg-section h3{font-size:13px;font-weight:700;margin-bottom:10px;color:var(--navy);}
+    .cfg-row{display:flex;gap:8px;align-items:center;padding:7px 10px;
+      border:1px solid var(--border);border-radius:7px;margin-bottom:5px;background:var(--cardL);}
+    .cfg-row span{flex:1;font-size:12px;}
+    /* ── Inactividad ── */
+    #warn-inact{display:none;position:fixed;bottom:16px;left:50%;transform:translateX(-50%);
+      background:#d48a10;color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;
+      font-weight:600;z-index:9999;display:none;gap:12px;align-items:center;
+      box-shadow:0 4px 16px rgba(0,0,0,.2);}
+    #warn-inact.show{display:flex;}
+    /* ── Archivadas collapse ── */
+    .mes-hdr{display:flex;justify-content:space-between;align-items:center;
+      padding:8px 12px;background:var(--cardL);border:1px solid var(--border);
+      border-radius:7px;cursor:pointer;margin-bottom:4px;font-weight:600;font-size:12px;}
+    /* ── Linea grupo ── */
+    .linea-grupo{font-size:11px;color:var(--textSec);margin-top:3px;padding-left:8px;
+      border-left:2px solid #7c3aed;}
     /* ── Placeholder ── */
-    .placeholder {
-      text-align: center; padding: 4rem 2rem;
-      color: var(--c-muted); font-size: .9375rem;
-    }
-    .placeholder strong { display: block; font-size: 1.125rem; color: var(--c-text); margin-bottom: .5rem; }
+    .placeholder{text-align:center;padding:48px 24px;color:var(--muted);}
+    .placeholder strong{display:block;font-size:16px;color:var(--text);margin-bottom:6px;}
+    /* ── Loader ── */
+    .loader{text-align:center;padding:40px;color:var(--muted);}
   </style>
 </head>
 <body>
 
-<!-- ══ LOGIN ══ -->
-<div id="login-screen">
+<!-- LOGIN -->
+<div id="login">
   <div class="login-card">
-    <h1>NorAcua Suite</h1>
-    <p>Acceso administración · v3.0</p>
-    <div class="field">
-      <label for="inp-user">Usuario</label>
-      <input id="inp-user" type="text" autocomplete="username" placeholder="Daniel / Ignacio" />
+    <div class="login-brand">
+      <h1>NorAcua Suite</h1>
+      <small>Suite de Gestión · v3.0</small>
     </div>
     <div class="field">
-      <label for="inp-pass">Contraseña</label>
-      <input id="inp-pass" type="password" autocomplete="current-password" />
+      <label>Usuario</label>
+      <select id="l-user">
+        <option value="Daniel">Daniel · Admin</option>
+        <option value="Ignacio">Ignacio · Admin</option>
+      </select>
     </div>
-    <button class="btn-primary" id="btn-login">Entrar</button>
-    <div class="login-error" id="login-error"></div>
+    <div class="field">
+      <label>Contraseña</label>
+      <input id="l-pass" type="password" placeholder="••••••••"/>
+    </div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center;padding:11px;" id="l-btn">Acceder</button>
+    <div id="l-err" style="color:var(--danger);font-size:11px;margin-top:8px;text-align:center;"></div>
   </div>
 </div>
 
-<!-- ══ APP SHELL ══ -->
-<div id="app">
-  <header>
-    <div class="header-brand">NorAcua Suite <span>v3.0 · Admin</span></div>
-    <div class="header-right">
-      <span class="header-user" id="header-user"></span>
-      <button class="btn-logout" id="btn-logout">Salir</button>
+<!-- APP -->
+<div id="app" style="display:none;">
+  <!-- HEADER -->
+  <div id="hdr">
+    <div class="logo">
+      <svg width="68" viewBox="0 0 200 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="200" height="60" rx="6" fill="#003057"/>
+        <text x="12" y="40" font-family="'Segoe UI',sans-serif" font-weight="800" font-size="28" fill="#00c8c8">Nor</text>
+        <text x="62" y="40" font-family="'Segoe UI',sans-serif" font-weight="800" font-size="28" fill="#fff">Acua</text>
+        <text x="148" y="40" font-family="'Segoe UI',sans-serif" font-weight="400" font-size="11" fill="rgba(255,255,255,.55)">Suite</text>
+      </svg>
+      <div>
+        <span>NorAcua Suite</span>
+        <small style="display:block;font-size:9px;color:var(--muted);">v3.0 · Admin</small>
+      </div>
     </div>
-  </header>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <!-- Módulos -->
+      <div class="mod-nav" id="mod-nav">
+        <button class="mod-btn active" data-mod="trabajos">📋 Trabajos</button>
+        <button class="mod-btn" data-mod="facturacion">🧾 Facturación</button>
+        <button class="mod-btn" data-mod="hsse">🦺 HSSE</button>
+        <button class="mod-btn" data-mod="proyectos">🏗 Proyectos</button>
+        <button class="mod-btn" data-mod="config">⚙️ Config</button>
+      </div>
+      <!-- Sub-nav -->
+      <div class="sub-nav" id="sub-nav"></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;">
+      <div class="user-chip"><span id="hdr-user">—</span> · <b>Admin</b></div>
+      <button class="btn-icon" id="btn-logout" title="Cerrar sesión">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      </button>
+    </div>
+  </div>
 
-  <nav>
-    <button class="nav-tab active" data-tab="actividades">Actividades</button>
-    <button class="nav-tab" data-tab="certificacion">Certificación</button>
-    <button class="nav-tab" data-tab="facturacion">Facturación</button>
-    <button class="nav-tab" data-tab="hsse">HSSE</button>
-    <button class="nav-tab" data-tab="proyectos">Proyectos</button>
-    <button class="nav-tab" data-tab="preciario">Preciario</button>
-    <button class="nav-tab" data-tab="config">Config</button>
-  </nav>
+  <!-- INACTIVIDAD -->
+  <div id="warn-inact">
+    <span>⚠️ Sesión inactiva — se cerrará en 5 minutos</span>
+    <button onclick="resetInact()" style="background:#fff;color:#d48a10;border:none;border-radius:5px;padding:4px 12px;cursor:pointer;font-weight:700;font-size:12px;">Seguir activo</button>
+  </div>
 
-  <main>
-    <!-- Actividades -->
-    <div class="tab-panel active" id="tab-actividades">
-      <div class="loader" id="loader-actividades">Cargando actividades…</div>
-      <div id="content-actividades" style="display:none">
-        <div class="kpi-grid" id="kpis-actividades"></div>
-        <div class="card">
-          <div class="card-title">Actividades</div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Fecha</th><th>Técnico</th><th>Proyecto</th><th>Zona</th>
-                  <th>Estado</th><th>Certif.</th>
-                </tr>
-              </thead>
-              <tbody id="tbody-actividades"></tbody>
-            </table>
+  <!-- MAIN -->
+  <div id="main">
+    <!-- TRABAJOS -->
+    <div id="mod-trabajos" class="mod-panel">
+      <!-- Registro -->
+      <div id="view-registro" class="view-panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <h2 style="font-size:17px;font-weight:700;">Registro de actividades</h2>
+          <div style="display:flex;gap:7px;">
+            <button class="btn btn-ghost btn-sm" id="btn-new-proy">+ Nuevo proyecto</button>
+            <button class="btn btn-primary btn-sm" id="btn-new-reg">+ Nueva actividad</button>
           </div>
         </div>
+        <div class="filtros" id="filtros-reg"></div>
+        <div id="lista-reg"><div class="loader">Cargando actividades…</div></div>
+      </div>
+      <!-- Revisión -->
+      <div id="view-revision" class="view-panel" style="display:none;">
+        <h2 style="font-size:17px;font-weight:700;margin-bottom:12px;">Revisión de trabajos</h2>
+        <div class="filtros" id="filtros-rev"></div>
+        <div id="lista-rev"><div class="loader">Cargando…</div></div>
+      </div>
+      <!-- Archivadas -->
+      <div id="view-archivadas" class="view-panel" style="display:none;">
+        <h2 style="font-size:17px;font-weight:700;margin-bottom:12px;">Actividades archivadas</h2>
+        <div class="filtros" id="filtros-arch"></div>
+        <div id="lista-arch"><div class="loader">Cargando…</div></div>
+      </div>
+      <!-- Informes -->
+      <div id="view-informes" class="view-panel" style="display:none;">
+        <h2 style="font-size:17px;font-weight:700;margin-bottom:12px;">Informes de actividad</h2>
+        <div id="lista-informes"><div class="loader">Cargando…</div></div>
+      </div>
+      <!-- Histórico -->
+      <div id="view-historico" class="view-panel" style="display:none;">
+        <h2 style="font-size:17px;font-weight:700;margin-bottom:12px;">Histórico</h2>
+        <div id="lista-historico"><div class="loader">Cargando…</div></div>
       </div>
     </div>
 
-    <!-- Certificación -->
-    <div class="tab-panel" id="tab-certificacion">
-      <div class="placeholder"><strong>Certificación</strong>Pendiente de implementar en v3.0</div>
-    </div>
-
-    <!-- Facturación -->
-    <div class="tab-panel" id="tab-facturacion">
-      <div class="loader" id="loader-facturacion">Cargando facturas…</div>
-      <div id="content-facturacion" style="display:none">
-        <div class="kpi-grid" id="kpis-facturacion"></div>
-        <div class="card">
-          <div class="card-title">Facturas</div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Número</th><th>Tipo</th><th>Cliente</th><th>Fecha</th>
-                  <th>Base</th><th>Total</th><th>Estado</th>
-                </tr>
-              </thead>
-              <tbody id="tbody-facturas"></tbody>
-            </table>
-          </div>
+    <!-- FACTURACIÓN -->
+    <div id="mod-facturacion" class="mod-panel" style="display:none;">
+      <div id="view-fact-lista" class="view-panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <h2 style="font-size:17px;font-weight:700;">Documentos de facturación</h2>
+          <button class="btn btn-primary btn-sm" id="btn-new-fact">+ Nueva factura</button>
+        </div>
+        <div id="kpis-fact" class="kpi-grid" style="grid-template-columns:repeat(3,1fr);"></div>
+        <div class="filtros" id="filtros-fact"></div>
+        <div class="card" style="padding:0;overflow:hidden;">
+          <table class="tabla">
+            <thead><tr>
+              <th>Número</th><th>Tipo</th><th>Cliente</th><th>Fecha</th>
+              <th>Vto.</th><th>Base</th><th>Total</th><th>Estado</th><th></th>
+            </tr></thead>
+            <tbody id="tbody-fact"></tbody>
+          </table>
         </div>
       </div>
     </div>
 
     <!-- HSSE -->
-    <div class="tab-panel" id="tab-hsse">
-      <div class="placeholder"><strong>HSSE Supervisiones</strong>Pendiente de implementar en v3.0</div>
-    </div>
-
-    <!-- Proyectos -->
-    <div class="tab-panel" id="tab-proyectos">
-      <div class="placeholder"><strong>Proyectos</strong>Pendiente de implementar en v3.0</div>
-    </div>
-
-    <!-- Preciario -->
-    <div class="tab-panel" id="tab-preciario">
-      <div class="placeholder">
-        <strong>Preciario v3</strong>
-        Disponible en aproximadamente una semana — pendiente de aprobación del nuevo catálogo de precios.
+    <div id="mod-hsse" class="mod-panel" style="display:none;">
+      <div id="view-hsse-registro" class="view-panel">
+        <h2 style="font-size:17px;font-weight:700;margin-bottom:12px;">Supervisiones HSSE</h2>
+        <div id="kpis-hsse" class="kpi-grid" style="grid-template-columns:repeat(4,1fr);"></div>
+        <div class="filtros" id="filtros-hsse"></div>
+        <div id="lista-hsse"><div class="loader">Cargando…</div></div>
+      </div>
+      <div id="view-hsse-revision" class="view-panel" style="display:none;">
+        <h2 style="font-size:17px;font-weight:700;margin-bottom:12px;">Revisión HSSE</h2>
+        <div id="lista-hsse-rev"><div class="loader">Cargando…</div></div>
+      </div>
+      <div id="view-hsse-informes" class="view-panel" style="display:none;">
+        <h2 style="font-size:17px;font-weight:700;margin-bottom:12px;">Informes HSSE</h2>
+        <div id="lista-hsse-inf"><div class="loader">Cargando…</div></div>
       </div>
     </div>
 
-    <!-- Config -->
-    <div class="tab-panel" id="tab-config">
-      <div class="placeholder"><strong>Configuración</strong>Pendiente de implementar en v3.0</div>
+    <!-- PROYECTOS -->
+    <div id="mod-proyectos" class="mod-panel" style="display:none;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h2 style="font-size:17px;font-weight:700;">Proyectos</h2>
+        <button class="btn btn-primary btn-sm" id="btn-new-proy2">+ Nuevo proyecto</button>
+      </div>
+      <div class="filtros" id="filtros-proy"></div>
+      <div id="lista-proy"><div class="loader">Cargando…</div></div>
     </div>
-  </main>
+
+    <!-- CONFIG -->
+    <div id="mod-config" class="mod-panel" style="display:none;">
+      <h2 style="font-size:17px;font-weight:700;margin-bottom:16px;">Configuración</h2>
+      <div id="cfg-content"><div class="loader">Cargando…</div></div>
+    </div>
+  </div>
 </div>
 
-<!-- ══ MODAL INACTIVIDAD ══ -->
-<div class="modal-overlay" id="modal-inactividad">
+<!-- MODAL DETALLE REGISTRO -->
+<div class="overlay" id="modal-reg">
+  <div class="modal-box" style="max-width:560px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <div class="modal-title" id="modal-reg-title">Detalle actividad</div>
+      <button onclick="closeModal('modal-reg')" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);">✕</button>
+    </div>
+    <div id="modal-reg-body"></div>
+    <div id="modal-reg-actions" style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;"></div>
+  </div>
+</div>
+
+<!-- MODAL NUEVA ACTIVIDAD -->
+<div class="overlay" id="modal-nueva-reg">
   <div class="modal-box">
-    <h2>¿Sigues ahí?</h2>
-    <p>La sesión se cerrará en 5 minutos por inactividad.</p>
-    <div class="modal-btns">
-      <button class="btn-primary" id="btn-extender" style="width:auto;padding:.5rem 1.5rem">Continuar</button>
-      <button class="btn-secondary" id="btn-cerrar-modal">Cerrar sesión</button>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <div class="modal-title">Nueva actividad</div>
+      <button onclick="closeModal('modal-nueva-reg')" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);">✕</button>
+    </div>
+    <div id="form-nueva-reg">
+      <div class="placeholder"><strong>Preciario pendiente</strong>Disponible cuando se cargue el preciario v3.</div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CAMBIO ESTADO -->
+<div class="overlay" id="modal-estado">
+  <div class="modal-box" style="max-width:380px;">
+    <div class="modal-title" id="modal-estado-title">Cambiar estado</div>
+    <p id="modal-estado-body" style="color:var(--textSec);margin-bottom:16px;font-size:13px;"></p>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-success" id="modal-estado-ok">Confirmar</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-estado')">Cancelar</button>
     </div>
   </div>
 </div>
 
 <script type="module">
-import { iniciarSesion, cerrarSesion, iniciarSesionDesdeStorage, extenderSesion, getSesion, getUsuario } from './src/api/session.js';
-import { getRegistros } from './src/api/registros.js';
-import { getFacturas }  from './src/api/facturas.js';
+import { iniciarSesion, cerrarSesion, iniciarSesionDesdeStorage, extenderSesion, getSesion, getUsuario, esAdmin } from './src/api/session.js';
+import { getRegistros, actualizarRegistro, eliminarRegistro } from './src/api/registros.js';
+import { getFacturas, getSeries } from './src/api/facturas.js';
+import { getProyectos } from './src/api/proyectos.js';
+import { getSupervisiones } from './src/api/hsse.js';
+import { getInformes } from './src/api/informes.js';
 import { fmtFecha, fmtEuros } from './src/utils/fmt.js';
 
-// ── Helpers UI ──────────────────────────────────────────────
+// ── Estado global ─────────────────────────────────────────────
+let STATE = {
+  modulo: 'trabajos',
+  view:   'registro',
+  registros: [], proyectos: [], facturas: [], series: [],
+  hsse: [], informes: [], usuarios: [],
+  filtroReg: { estado: '', tecnico: '', proy: '' },
+  filtroFact: { tipo: '', estado: '', serie: '' },
+  filtroHsse: { estado: '', zona: '' },
+  filtroProy: { zona: '', activo: 'true' },
+  collapsedIds: new Set(),
+  cargado: { reg: false, fact: false, hsse: false, proy: false, inf: false },
+};
 
+// ── Helpers ───────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
+const fmtE = n => n == null ? '—' : Number(n).toLocaleString('es-ES', {style:'currency',currency:'EUR'});
+const fmtD = s => { if (!s) return '—'; const [y,m,d] = s.split('-'); return `${d}/${m}/${y}`; };
+const bdg = (est, txt) => `<span class="bdg bdg-${est||'pendiente'}">${txt||est||'—'}</span>`;
+const gP = id => STATE.proyectos.find(p => p.id === id);
 
-function badge(estado) {
-  return `<span class="badge badge-${estado}">${estado}</span>`;
+// ── Sub-navs por módulo ───────────────────────────────────────
+const SUB_NAVS = {
+  trabajos:    [{k:'registro',l:'Registro'},{k:'revision',l:'Revisión'},{k:'archivadas',l:'Archivadas'},{k:'informes',l:'Informes'},{k:'historico',l:'Histórico'}],
+  facturacion: [{k:'fact-lista',l:'Documentos'}],
+  hsse:        [{k:'hsse-registro',l:'Registro'},{k:'hsse-revision',l:'Revisión'},{k:'hsse-informes',l:'Informes'}],
+  proyectos:   [],
+  config:      [],
+};
+
+function renderSubNav() {
+  const nav = $('sub-nav');
+  const items = SUB_NAVS[STATE.modulo] || [];
+  nav.innerHTML = items.map(n =>
+    `<button class="sub-btn${STATE.view === n.k ? ' active' : ''}" data-view="${n.k}">${n.l}</button>`
+  ).join('');
 }
 
-function mostrarApp(usuario) {
-  $('login-screen').style.display = 'none';
-  $('app').classList.add('visible');
-  $('header-user').textContent = usuario.nombre;
-  cargarActividades();
+function setView(v) {
+  STATE.view = v;
+  // Ocultar todos los view-panel
+  document.querySelectorAll('.view-panel').forEach(el => el.style.display = 'none');
+  // Mostrar el correcto
+  const target = $(`view-${v}`);
+  if (target) target.style.display = 'block';
+  renderSubNav();
+  lazyLoad(v);
 }
 
-function mostrarLogin() {
-  $('app').classList.remove('visible');
-  $('login-screen').style.display = 'flex';
+function setModulo(m) {
+  STATE.modulo = m;
+  // Ocultar todos mod-panel
+  document.querySelectorAll('.mod-panel').forEach(el => el.style.display = 'none');
+  $(`mod-${m}`).style.display = 'block';
+  // Módulos nav
+  document.querySelectorAll('.mod-btn').forEach(b => b.classList.toggle('active', b.dataset.mod === m));
+  // Set default view
+  const defaultViews = { trabajos:'registro', facturacion:'fact-lista', hsse:'hsse-registro', proyectos:'proyectos', config:'config' };
+  setView(defaultViews[m] || m);
 }
 
-// ── Tabs ────────────────────────────────────────────────────
+// ── Lazy load por vista ───────────────────────────────────────
+async function lazyLoad(view) {
+  const sesion = getSesion();
+  if (!sesion) return;
+  const uid = sesion.sesionId;
 
-let tabCargado = {};
-
-document.querySelectorAll('.nav-tab').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-    btn.classList.add('active');
-    const tab = btn.dataset.tab;
-    $(`tab-${tab}`).classList.add('active');
-    if (!tabCargado[tab]) {
-      tabCargado[tab] = true;
-      if (tab === 'facturacion') cargarFacturas();
+  if (['registro','revision','archivadas','informes','historico'].includes(view) && !STATE.cargado.reg) {
+    STATE.cargado.reg = true;
+    try {
+      STATE.registros = await getRegistros({ usuarioId: uid });
+      STATE.proyectos = await getProyectos({ usuarioId: uid });
+    } catch(e) { console.error(e); }
+    renderRegistro();
+    renderRevision();
+    renderArchivadas();
+    renderInformes();
+  }
+  if (view === 'fact-lista' && !STATE.cargado.fact) {
+    STATE.cargado.fact = true;
+    try {
+      STATE.facturas = await getFacturas({ usuarioId: uid });
+      STATE.series   = await getSeries(uid);
+    } catch(e) { console.error(e); }
+    renderFacturas();
+  }
+  if (['hsse-registro','hsse-revision','hsse-informes'].includes(view) && !STATE.cargado.hsse) {
+    STATE.cargado.hsse = true;
+    try { STATE.hsse = await getSupervisiones({ usuarioId: uid }); } catch(e) { console.error(e); }
+    renderHsse();
+  }
+  if (view === 'proyectos' && !STATE.cargado.proy) {
+    STATE.cargado.proy = true;
+    if (!STATE.proyectos.length) {
+      try { STATE.proyectos = await getProyectos({ usuarioId: uid }); } catch(e) { console.error(e); }
     }
+    renderProyectos();
+  }
+  if (view === 'config') renderConfig();
+}
+
+// ── Colores estado registro ───────────────────────────────────
+function regHdrClass(estado) {
+  return ({pendiente:'pendiente',aprobado:'aprobado',rechazado:'rechazado',
+    ofertada:'ofertada',certif_oferta:'certif_oferta',certificado:'certificado'})[estado] || 'pendiente';
+}
+
+// ── RENDER REGISTRO ───────────────────────────────────────────
+function getRegistrosFiltrados(vista) {
+  let r = [...STATE.registros];
+  const f = STATE.filtroReg;
+  if (f.estado) r = r.filter(x => x.estado === f.estado);
+  if (f.tecnico) r = r.filter(x => (x.tecnico?.nombre || '') === f.tecnico);
+  if (f.proy) r = r.filter(x => (gP(x.proyecto_id)?.nombre || '').toLowerCase().includes(f.proy.toLowerCase()));
+
+  if (vista === 'registro') {
+    r = r.filter(x => {
+      const lineas = x.lineas || [];
+      const allAprob = lineas.length > 0 && lineas.every(l => l.certif_aprobada);
+      if (x.estado_certif === 'aprobada' || allAprob) return false;
+      if (x.oferta_id) return false;
+      return x.estado === 'pendiente';
+    });
+  }
+  if (vista === 'revision') {
+    r = r.filter(x => {
+      if (!['aprobado','ofertada','pendiente'].includes(x.estado)) return false;
+      const lineas = x.lineas || [];
+      const allAprob = lineas.length > 0 && lineas.every(l => l.certif_aprobada);
+      if (x.estado_certif === 'aprobada' || allAprob) return false;
+      return true;
+    });
+  }
+  if (vista === 'archivadas') {
+    r = r.filter(x => {
+      const lineas = x.lineas || [];
+      const allAprob = lineas.length > 0 && lineas.every(l => l.certif_aprobada);
+      return x.estado_certif === 'aprobada' || allAprob || x.factura_id;
+    });
+  }
+  r.sort((a,b) => (b.fecha||'').localeCompare(a.fecha||''));
+  return r;
+}
+
+function renderRegCards(regs, contenedor, opciones = {}) {
+  if (!regs.length) {
+    contenedor.innerHTML = '<div class="placeholder">No hay actividades con estos filtros.</div>';
+    return;
+  }
+
+  // Agrupar por proyecto
+  const grupos = {};
+  const orden = [];
+  regs.forEach(r => {
+    const p = r.proyecto;
+    const key = p ? (p.nombre + '|' + (p.estacion || '')) : '_sin';
+    if (!grupos[key]) { grupos[key] = []; orden.push(key); }
+    grupos[key].push(r);
   });
-});
 
-// ── Login ───────────────────────────────────────────────────
+  let html = '';
+  orden.forEach(key => {
+    const rgs = grupos[key];
+    const p = rgs[0].proyecto;
+    const totalProy = rgs.reduce((s, r) => s + (Number(r.precio_unitario || 0) * Number(r.cantidad || 1)), 0);
+    html += `
+      <div class="proy-hdr">
+        <div>
+          <span class="pn">${p ? p.nombre : 'Sin proyecto'}</span>
+          ${p?.zona ? `<span class="ps"> · ${p.zona}</span>` : ''}
+          ${p?.estacion ? ` <span class="ps">· ${p.estacion}</span>` : ''}
+        </div>
+        ${totalProy > 0 ? `<span style="font-size:12px;opacity:.9;">${fmtE(totalProy)}</span>` : ''}
+      </div>`;
+    rgs.forEach(r => {
+      const collapsed = !STATE.collapsedIds.has(r.id);
+      const hdrClass = regHdrClass(r.estado);
+      const esGrupo = r.es_grupo;
+      const lineas = r.lineas || [];
+      const titulo = esGrupo ? `GRUPO · ${lineas.length} actividades` : (r.concepto?.nombre || r.observaciones || '—');
+      html += `
+        <div class="reg-card" id="rc-${r.id}">
+          <div class="reg-hdr ${hdrClass}" onclick="toggleReg('${r.id}')">
+            <div style="display:flex;gap:8px;align-items:center;flex:1;flex-wrap:wrap;">
+              <span style="font-weight:700;font-size:12px;">${titulo}</span>
+              ${r.tecnico ? `<span style="font-size:11px;color:var(--textSec);">· ${r.tecnico.nombre}</span>` : ''}
+              <span style="font-size:11px;color:var(--muted);">· ${fmtD(r.fecha)}</span>
+              ${bdg(r.estado)}
+              ${r.estado_certif ? bdg(r.estado_certif) : ''}
+              ${r.factura_id ? `<span style="font-size:10px;color:#7c3aed;font-weight:700;background:#f5f3ff;border:1px solid #c4b5fd;padding:2px 6px;border-radius:4px;">💰 Facturado</span>` : ''}
+            </div>
+            <span style="font-size:10px;color:var(--muted);">${collapsed ? '▼' : '▲'}</span>
+          </div>
+          <div id="rb-${r.id}" style="display:${collapsed ? 'none' : 'block'};">
+            <div class="reg-body">
+              ${esGrupo ? `
+                <div style="margin-bottom:8px;">
+                  <span style="background:#7c3aed;color:#fff;border-radius:4px;padding:1px 5px;font-size:9px;font-weight:700;">GRUPO</span>
+                  <span style="font-size:11px;color:var(--muted);margin-left:4px;">${lineas.length} actividades</span>
+                  ${lineas.map(l => `
+                    <div class="linea-grupo">
+                      ${l.concepto_id || '—'} · cant: ${l.cantidad || 1}
+                      ${l.observaciones ? ` · <em>${l.observaciones}</em>` : ''}
+                      ${l.certif_aprobada ? ' ✓' : l.certif_enviada ? ' 📤' : ''}
+                    </div>`).join('')}
+                </div>` : ''}
+              ${r.observaciones ? `<div style="font-size:11px;color:var(--muted);font-style:italic;margin-bottom:6px;">${r.observaciones}</div>` : ''}
+              <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:8px;">
+                ${opciones.showAprobar && r.estado === 'pendiente' ? `
+                  <button class="btn btn-success btn-sm" onclick="cambiarEstado('${r.id}','aprobado','¿Aprobar esta actividad?')">✓ Aprobar</button>
+                  <button class="btn btn-danger btn-sm" onclick="cambiarEstado('${r.id}','rechazado','¿Rechazar esta actividad?')">✕ Rechazar</button>` : ''}
+                ${opciones.showAprobar && r.estado === 'rechazado' ? `
+                  <button class="btn btn-ghost btn-sm" onclick="cambiarEstado('${r.id}','pendiente','¿Devolver a pendiente?')">↩ Pendiente</button>` : ''}
+                ${r.estado === 'aprobado' && !r.estado_certif && !r.factura_id ? `
+                  <button class="btn btn-ghost btn-sm" onclick="cambiarEstado('${r.id}','aprobada','¿Aprobar certificación?','estado_certif')">✓ Certif. aprobada</button>` : ''}
+                <button class="btn btn-ghost btn-sm" onclick="verDetalle('${r.id}')">Ver detalle</button>
+              </div>
+            </div>
+          </div>
+        </div>`;
+    });
+  });
+  contenedor.innerHTML = html;
+}
 
-async function tryLogin() {
-  const nombre   = $('inp-user').value.trim();
-  const password = $('inp-pass').value;
-  $('login-error').textContent = '';
-  $('btn-login').disabled = true;
-  $('btn-login').textContent = 'Entrando…';
+function renderRegistro() {
+  const c = $('lista-reg');
+  renderFiltrosReg('filtros-reg');
+  renderRegCards(getRegistrosFiltrados('registro'), c, { showAprobar: false });
+}
+
+function renderRevision() {
+  const c = $('lista-rev');
+  renderFiltrosReg('filtros-rev');
+  renderRegCards(getRegistrosFiltrados('revision'), c, { showAprobar: true });
+}
+
+function renderArchivadas() {
+  const c = $('lista-arch');
+  // Agrupar por mes
+  const regs = getRegistrosFiltrados('archivadas');
+  if (!regs.length) { c.innerHTML = '<div class="placeholder">No hay actividades archivadas.</div>'; return; }
+  const porMes = {};
+  regs.forEach(r => {
+    const m = (r.fecha || '').slice(0, 7);
+    if (!porMes[m]) porMes[m] = [];
+    porMes[m].push(r);
+  });
+  let html = '';
+  Object.keys(porMes).sort().reverse().forEach(mes => {
+    const [y, m] = mes.split('-');
+    const label = new Date(y, m-1).toLocaleDateString('es-ES', {year:'numeric',month:'long'});
+    const total = porMes[mes].reduce((s,r) => s + Number(r.precio_unitario||0)*Number(r.cantidad||1), 0);
+    html += `<div class="mes-hdr" onclick="toggleMes('${mes}')">
+      <span>${label} · ${porMes[mes].length} actividades</span>
+      <span>${fmtE(total)}</span>
+    </div>
+    <div id="mes-${mes}">`;
+    porMes[mes].forEach(r => {
+      const p = r.proyecto;
+      html += `<div style="padding:7px 12px;border:1px solid var(--border);border-top:none;font-size:12px;display:flex;justify-content:space-between;align-items:center;background:var(--card);">
+        <div>
+          <span style="font-weight:600;">${p?.nombre || '—'}</span>
+          ${p?.estacion ? `<span style="color:var(--primary);margin-left:4px;">· ${p.estacion}</span>` : ''}
+          <span style="color:var(--muted);margin-left:6px;">${fmtD(r.fecha)}</span>
+          ${r.observaciones ? `<span style="color:var(--muted);font-style:italic;margin-left:4px;">${r.observaciones}</span>` : ''}
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;">
+          ${bdg(r.estado)}
+          ${r.factura_id ? `<span style="font-size:10px;color:#7c3aed;font-weight:700;">💰 Facturado</span>` : ''}
+        </div>
+      </div>`;
+    });
+    html += '</div>';
+  });
+  c.innerHTML = html;
+}
+
+function renderInformes() {
+  const c = $('lista-informes');
+  const inf = STATE.informes;
+  if (!inf.length) {
+    c.innerHTML = '<div class="placeholder"><strong>Sin informes</strong>Los informes de actividad se generarán aquí.</div>';
+    return;
+  }
+  c.innerHTML = inf.map(i => `
+    <div class="card" style="margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-weight:700;font-size:13px;">${i.nombre}</div>
+          <div style="font-size:11px;color:var(--muted);">${fmtD(i.periodo_desde)} → ${fmtD(i.periodo_hasta)}</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          ${i.importe_total ? `<span style="font-weight:700;">${fmtE(i.importe_total)}</span>` : ''}
+          ${bdg(i.estado)}
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+// ── Filtros registro ──────────────────────────────────────────
+function renderFiltrosReg(id) {
+  const c = $(id);
+  if (c.children.length) return; // ya renderizados
+  const tecnicos = [...new Set(STATE.registros.map(r => r.tecnico?.nombre).filter(Boolean))];
+  c.innerHTML = `
+    <input placeholder="Proyecto..." value="${STATE.filtroReg.proy}" oninput="setFiltroReg('proy',this.value)" style="min-width:140px;"/>
+    <select onchange="setFiltroReg('estado',this.value)">
+      <option value="">Todos estados</option>
+      ${['pendiente','aprobado','rechazado','ofertada'].map(s => `<option value="${s}"${STATE.filtroReg.estado===s?' selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('')}
+    </select>
+    <select onchange="setFiltroReg('tecnico',this.value)">
+      <option value="">Todos técnicos</option>
+      ${tecnicos.map(t => `<option value="${t}"${STATE.filtroReg.tecnico===t?' selected':''}>${t}</option>`).join('')}
+    </select>`;
+}
+
+// ── RENDER FACTURAS ───────────────────────────────────────────
+function renderFacturas() {
+  // KPIs
+  const facts = STATE.facturas;
+  const totalBase  = facts.reduce((s,f) => s + Number(f.base_imponible||0), 0);
+  const totalTotal = facts.reduce((s,f) => s + Number(f.total||0), 0);
+  const cobradas   = facts.filter(f => f.estado === 'Cobrada').reduce((s,f) => s + Number(f.total||0), 0);
+  $('kpis-fact').innerHTML = `
+    <div class="kpi-card"><div class="kpi-label">Facturas</div><div class="kpi-value">${facts.length}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Base total</div><div class="kpi-value" style="font-size:20px;">${fmtE(totalBase)}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Total c/IVA</div><div class="kpi-value" style="font-size:20px;">${fmtE(totalTotal)}</div></div>`;
+
+  // Filtros
+  const fc = $('filtros-fact');
+  if (!fc.children.length) {
+    const series = [...new Set(facts.map(f => f.serie?.codigo || f.cliente?.codigo || '').filter(Boolean))];
+    fc.innerHTML = `
+      <select onchange="setFiltroFact('tipo',this.value)">
+        <option value="">Todos tipos</option>
+        ${['Factura','Abono','Suplido'].map(t => `<option value="${t}">${t}</option>`).join('')}
+      </select>
+      <select onchange="setFiltroFact('estado',this.value)">
+        <option value="">Todos estados</option>
+        ${['Borrador','Enviada','Cobrada','Vencida','Anulada'].map(s => `<option value="${s}">${s}</option>`).join('')}
+      </select>`;
+  }
+
+  // Tabla
+  const f = STATE.filtroFact;
+  const filtradas = facts.filter(x =>
+    (!f.tipo || x.tipo === f.tipo) &&
+    (!f.estado || x.estado === f.estado)
+  ).sort((a,b) => (b.fecha||'').localeCompare(a.fecha||''));
+
+  $('tbody-fact').innerHTML = filtradas.map(f => `
+    <tr style="cursor:pointer;" onclick="verFactura('${f.id}')">
+      <td><strong>${f.numero || '—'}</strong></td>
+      <td>${f.tipo || '—'}</td>
+      <td style="font-size:11px;">${f.cliente?.nombre || '—'}</td>
+      <td>${fmtD(f.fecha)}</td>
+      <td style="font-size:11px;color:var(--muted);">${fmtD(f.fecha_vto)}</td>
+      <td>${fmtE(f.base_imponible)}</td>
+      <td><strong>${fmtE(f.total)}</strong></td>
+      <td>${bdg(f.estado, f.estado)}</td>
+      <td>
+        <select onchange="cambiarEstadoFact('${f.id}',this.value)" onclick="event.stopPropagation()"
+          style="font-size:10px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;">
+          ${['Borrador','Enviada','Cobrada','Vencida','Anulada'].map(s =>
+            `<option value="${s}"${f.estado===s?' selected':''}>${s}</option>`).join('')}
+        </select>
+      </td>
+    </tr>`).join('') || '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:20px;">Sin facturas</td></tr>';
+}
+
+// ── RENDER HSSE ───────────────────────────────────────────────
+function renderHsse() {
+  const sups = STATE.hsse;
+  const aprobadas  = sups.filter(s => s.estado === 'aprobada');
+  const pendientes = sups.filter(s => s.estado === 'pendiente');
+  const totalHoras = aprobadas.reduce((a,s) => a + Number(s.horas_facturables||0), 0);
+
+  $('kpis-hsse').innerHTML = `
+    <div class="kpi-card"><div class="kpi-label">Total</div><div class="kpi-value">${sups.length}</div></div>
+    <div class="kpi-card click" onclick="setView('hsse-revision')"><div class="kpi-label">Pendientes</div><div class="kpi-value" style="color:${pendientes.length>0?'var(--warn)':'var(--success)'}">${pendientes.length}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Aprobadas</div><div class="kpi-value" style="color:var(--success)">${aprobadas.length}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Horas facturables</div><div class="kpi-value">${totalHoras}</div></div>`;
+
+  renderHsseList('lista-hsse', sups);
+  renderHsseList('lista-hsse-rev', pendientes, { showAprobar: true });
+}
+
+function renderHsseList(id, sups, opts = {}) {
+  const c = $(id);
+  if (!sups.length) { c.innerHTML = '<div class="placeholder">No hay supervisiones.</div>'; return; }
+  c.innerHTML = sups.map(s => {
+    const datos = s.datos_supervision || {};
+    return `
+      <div class="card" style="margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <div style="font-weight:700;font-size:13px;">${datos.site || s.tipo || '—'}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px;">
+              ${s.tipo} · ${s.zona} · ${fmtD(s.fecha)}
+              ${s.horas_facturables ? ` · ${s.horas_facturables}h` : ''}
+            </div>
+            ${datos.comentarios ? `<div style="font-size:11px;color:var(--muted);font-style:italic;margin-top:3px;">${datos.comentarios}</div>` : ''}
+          </div>
+          <div style="display:flex;gap:7px;align-items:center;">
+            ${bdg(s.estado)}
+            ${opts.showAprobar && s.estado === 'pendiente' ? `
+              <button class="btn btn-success btn-sm" onclick="aprobarHsse('${s.id}')">✓ Aprobar</button>` : ''}
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ── RENDER PROYECTOS ──────────────────────────────────────────
+function renderProyectos() {
+  const c = $('lista-proy');
+  const f = STATE.filtroProy;
+  let proys = [...STATE.proyectos];
+  if (f.zona) proys = proys.filter(p => p.zona === f.zona);
+  if (f.activo !== '') proys = proys.filter(p => String(p.activo) === f.activo);
+
+  // Filtros
+  const fc = $('filtros-proy');
+  if (!fc.children.length) {
+    fc.innerHTML = `
+      <select onchange="setFiltroProy('zona',this.value)">
+        <option value="">Todas las zonas</option>
+        ${['CENTRO','NORTE','CATALUÑA','BALEARES','OTROS'].map(z => `<option value="${z}">${z}</option>`).join('')}
+      </select>
+      <select onchange="setFiltroProy('activo',this.value)">
+        <option value="true">Activos</option>
+        <option value="false">Inactivos</option>
+        <option value="">Todos</option>
+      </select>
+      <span style="font-size:11px;color:var(--muted);align-self:center;">${proys.length} proyectos</span>`;
+  }
+
+  if (!proys.length) { c.innerHTML = '<div class="placeholder">No hay proyectos.</div>'; return; }
+
+  // Agrupar por zona
+  const grupos = {};
+  proys.forEach(p => {
+    if (!grupos[p.zona]) grupos[p.zona] = [];
+    grupos[p.zona].push(p);
+  });
+
+  c.innerHTML = Object.keys(grupos).sort().map(zona => `
+    <div style="margin-bottom:16px;">
+      <div class="sec-title">${zona} · ${grupos[zona].length} proyectos</div>
+      ${grupos[zona].map(p => `
+        <div class="card" style="margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <div style="font-weight:700;font-size:13px;">${p.nombre}</div>
+            <div style="font-size:11px;color:var(--muted);">
+              ${p.estacion ? p.estacion : ''}
+              ${p.po ? ` · PO: ${p.po}` : ''}
+              ${p.cliente?.nombre ? ` · ${p.cliente.nombre}` : ''}
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <span class="bdg ${p.activo ? 'bdg-aprobado' : 'bdg-rechazado'}">${p.activo ? 'Activo' : 'Inactivo'}</span>
+            <button class="btn btn-ghost btn-sm" onclick="toggleProyecto('${p.id}',${!p.activo})">${p.activo ? 'Desactivar' : 'Activar'}</button>
+          </div>
+        </div>`).join('')}
+    </div>`).join('');
+}
+
+// ── RENDER CONFIG ─────────────────────────────────────────────
+function renderConfig() {
+  const sesion = getSesion();
+  $('cfg-content').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+      <!-- Empresa -->
+      <div class="card">
+        <div class="cfg-section">
+          <h3>🏢 Empresa</h3>
+          <div class="cfg-row"><span><strong>Nombre</strong></span><span>Nor Acua Sport S.L.</span></div>
+          <div class="cfg-row"><span><strong>CIF</strong></span><span>B87737060</span></div>
+          <div class="cfg-row"><span><strong>Dirección</strong></span><span>Av. de Europa, 19 — Pozuelo de Alarcón</span></div>
+        </div>
+      </div>
+      <!-- Sesión -->
+      <div class="card">
+        <div class="cfg-section">
+          <h3>👤 Sesión activa</h3>
+          <div class="cfg-row"><span><strong>Usuario</strong></span><span>${sesion?.usuario?.nombre || '—'}</span></div>
+          <div class="cfg-row"><span><strong>Rol</strong></span><span>${sesion?.usuario?.rol || '—'}</span></div>
+          <div class="cfg-row"><span><strong>ID sesión</strong></span><span style="font-size:10px;font-family:monospace;">${sesion?.sesionId?.slice(0,16) || '—'}…</span></div>
+        </div>
+        <button class="btn btn-danger btn-sm" onclick="doLogout()">Cerrar sesión</button>
+      </div>
+      <!-- Clientes -->
+      <div class="card">
+        <div class="cfg-section">
+          <h3>👥 Clientes</h3>
+          <div id="cfg-clientes"><div class="loader" style="padding:10px;">Cargando…</div></div>
+        </div>
+      </div>
+      <!-- Series -->
+      <div class="card">
+        <div class="cfg-section">
+          <h3>📋 Series de facturación</h3>
+          <div id="cfg-series"><div class="loader" style="padding:10px;">Cargando…</div></div>
+        </div>
+      </div>
+      <!-- Preciario -->
+      <div class="card" style="grid-column:1/-1;">
+        <div class="cfg-section">
+          <h3>💰 Preciario</h3>
+          <div id="cfg-preciario">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:var(--warnBg);border-radius:7px;border:1px solid var(--warn);">
+              <span style="color:var(--warn);font-weight:600;">⏳ Preciario v3 pendiente de carga</span>
+              <span style="font-size:11px;color:var(--muted);">Ejecutar preciario_bp_produccion.sql en Supabase cuando esté listo</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- DB Info -->
+      <div class="card" style="grid-column:1/-1;">
+        <div class="cfg-section">
+          <h3>🗄️ Base de datos</h3>
+          <div class="cfg-row"><span><strong>Proyecto Supabase</strong></span><span style="font-family:monospace;font-size:11px;">lhmawivuxgekxleqvqle</span></div>
+          <div class="cfg-row"><span><strong>Schema</strong></span><span style="font-family:monospace;font-size:11px;">v3</span></div>
+          <div class="cfg-row"><span><strong>Version app</strong></span><span>3.0.0 (staging)</span></div>
+        </div>
+      </div>
+    </div>`;
+
+  // Cargar clientes y series async
+  cargarCfgClientes();
+  cargarCfgSeries();
+}
+
+async function cargarCfgClientes() {
   try {
-    const { usuario } = await iniciarSesion(nombre, password, {
-      onAviso:  () => $('modal-inactividad').classList.add('visible'),
-      onLogout: () => { mostrarLogin(); },
+    const { SUPABASE_URL, SUPABASE_ANON } = await import('./src/config.js');
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/na_clientes?select=codigo,nombre,nif&order=codigo.asc`, {
+      headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}`, 'Accept-Profile': 'v3' }
+    });
+    const clientes = await r.json();
+    $('cfg-clientes').innerHTML = clientes.map(c => `
+      <div class="cfg-row">
+        <span><strong>${c.codigo}</strong> — ${c.nombre}</span>
+        <span style="font-size:11px;color:var(--muted);">${c.nif||'—'}</span>
+      </div>`).join('');
+  } catch(e) { $('cfg-clientes').innerHTML = '<span style="color:var(--muted);font-size:11px;">Error al cargar</span>'; }
+}
+
+async function cargarCfgSeries() {
+  try {
+    const series = STATE.series.length ? STATE.series : await getSeries(getSesion()?.sesionId);
+    STATE.series = series;
+    $('cfg-series').innerHTML = (series||[]).map(s => `
+      <div class="cfg-row">
+        <span><strong>${s.codigo}</strong> — ${s.nombre}</span>
+        <span style="font-size:11px;color:var(--muted);">Facturas: ${s.cont_factura} · Suplidos: ${s.cont_suplido} · Abonos: ${s.cont_abono}</span>
+      </div>`).join('') || '<span style="color:var(--muted);font-size:11px;">Sin series</span>';
+  } catch(e) { $('cfg-series').innerHTML = '<span style="color:var(--muted);font-size:11px;">Error al cargar</span>'; }
+}
+
+// ── Acciones globales (expuestas a onclick) ───────────────────
+window.toggleReg = id => {
+  const body = $(`rb-${id}`);
+  if (!body) return;
+  const visible = body.style.display !== 'none';
+  if (visible) { STATE.collapsedIds.add(id); body.style.display = 'none'; }
+  else { STATE.collapsedIds.delete(id); body.style.display = 'block'; }
+};
+
+window.toggleMes = mes => {
+  const el = $(`mes-${mes}`);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+};
+
+window.cambiarEstado = (id, nuevoEstado, msg, campo = 'estado') => {
+  $('modal-estado-title').textContent = 'Cambiar estado';
+  $('modal-estado-body').textContent = msg;
+  $('modal-estado-ok').onclick = async () => {
+    closeModal('modal-estado');
+    const sesion = getSesion();
+    try {
+      await actualizarRegistro(id, { [campo]: nuevoEstado }, sesion?.sesionId);
+      // Actualizar en memoria
+      STATE.registros = STATE.registros.map(r => r.id === id ? { ...r, [campo]: nuevoEstado } : r);
+      renderRevision();
+      renderRegistro();
+    } catch(e) { alert('Error: ' + e.message); }
+  };
+  $('modal-estado').classList.add('show');
+};
+
+window.cambiarEstadoFact = async (id, nuevoEstado) => {
+  try {
+    const { actualizarEstadoFactura } = await import('./src/api/facturas.js');
+    const sesion = getSesion();
+    await actualizarEstadoFactura(id, nuevoEstado, sesion?.sesionId);
+    STATE.facturas = STATE.facturas.map(f => f.id === id ? { ...f, estado: nuevoEstado } : f);
+    renderFacturas();
+  } catch(e) { alert('Error: ' + e.message); }
+};
+
+window.aprobarHsse = async id => {
+  const sesion = getSesion();
+  try {
+    const { aprobarSupervision } = await import('./src/api/hsse.js');
+    await aprobarSupervision(id, sesion?.sesionId);
+    STATE.hsse = STATE.hsse.map(s => s.id === id ? { ...s, estado: 'aprobada' } : s);
+    renderHsse();
+  } catch(e) { alert('Error: ' + e.message); }
+};
+
+window.toggleProyecto = async (id, activo) => {
+  const sesion = getSesion();
+  try {
+    const { actualizarProyecto } = await import('./src/api/proyectos.js');
+    await actualizarProyecto(id, { activo }, sesion?.sesionId);
+    STATE.proyectos = STATE.proyectos.map(p => p.id === id ? { ...p, activo } : p);
+    renderProyectos();
+  } catch(e) { alert('Error: ' + e.message); }
+};
+
+window.verDetalle = id => {
+  const r = STATE.registros.find(x => x.id === id);
+  if (!r) return;
+  const p = r.proyecto;
+  const lineas = r.lineas || [];
+  $('modal-reg-title').textContent = r.es_grupo ? `GRUPO · ${lineas.length} actividades` : (r.concepto?.nombre || 'Detalle');
+  $('modal-reg-body').innerHTML = `
+    <div style="display:grid;gap:8px;font-size:12px;">
+      <div><strong>Proyecto:</strong> ${p?.nombre || '—'} ${p?.zona ? `(${p.zona})` : ''}</div>
+      <div><strong>Estación:</strong> ${p?.estacion || '—'}</div>
+      <div><strong>Técnico:</strong> ${r.tecnico?.nombre || '—'}</div>
+      <div><strong>Fecha:</strong> ${fmtD(r.fecha)}</div>
+      <div><strong>Estado:</strong> ${bdg(r.estado)} ${r.estado_certif ? bdg(r.estado_certif) : ''}</div>
+      ${r.observaciones ? `<div><strong>Observaciones:</strong> ${r.observaciones}</div>` : ''}
+      ${r.es_grupo && lineas.length ? `
+        <div style="border-top:1px solid var(--border);padding-top:8px;margin-top:4px;">
+          <strong>Líneas del grupo:</strong>
+          ${lineas.map((l,i) => `
+            <div class="linea-grupo" style="margin-top:4px;">
+              ${i+1}. ${l.concepto_id || '—'} · Cant: ${l.cantidad || 1}
+              ${l.certif_aprobada ? ' <span style="color:var(--success);">✓</span>' : l.certif_enviada ? ' <span style="color:var(--warn);">📤</span>' : ''}
+              ${l.observaciones ? `<br><em style="color:var(--muted);">${l.observaciones}</em>` : ''}
+            </div>`).join('')}
+        </div>` : ''}
+      ${r.factura_id ? `<div style="color:#7c3aed;font-weight:600;">💰 Facturado</div>` : ''}
+    </div>`;
+  $('modal-reg').classList.add('show');
+};
+
+window.verFactura = id => {
+  const f = STATE.facturas.find(x => x.id === id);
+  if (!f) return;
+  alert(`Factura ${f.numero}\nCliente: ${f.cliente?.nombre || '—'}\nBase: ${fmtE(f.base_imponible)}\nTotal: ${fmtE(f.total)}\nEstado: ${f.estado}`);
+};
+
+window.closeModal = id => $(id).classList.remove('show');
+window.setFiltroReg = (k, v) => { STATE.filtroReg[k] = v; renderRegistro(); renderRevision(); };
+window.setFiltroFact = (k, v) => { STATE.filtroFact[k] = v; renderFacturas(); };
+window.setFiltroProy = (k, v) => { STATE.filtroProy[k] = v; $('filtros-proy').innerHTML = ''; renderProyectos(); };
+window.setView = setView;
+window.resetInact = () => { extenderSesion(); $('warn-inact').classList.remove('show'); };
+window.doLogout = () => cerrarSesion().then(() => location.reload());
+
+// ── LOGIN ─────────────────────────────────────────────────────
+async function tryLogin() {
+  const nombre = $('l-user').value;
+  const pass   = $('l-pass').value;
+  $('l-err').textContent = '';
+  $('l-btn').textContent = 'Accediendo…';
+  $('l-btn').disabled = true;
+  try {
+    const { usuario } = await iniciarSesion(nombre, pass, {
+      onAviso: () => $('warn-inact').classList.add('show'),
+      onLogout: () => location.reload(),
     });
     if (usuario.rol !== 'admin') throw new Error('Acceso restringido a administradores');
-    mostrarApp(usuario);
-  } catch (e) {
-    $('login-error').textContent = e.message.includes('incorrectos') ? 'Usuario o contraseña incorrectos' : e.message;
+    $('login').style.display = 'none';
+    $('app').style.display = 'block';
+    $('hdr-user').textContent = usuario.nombre;
+    setModulo('trabajos');
+  } catch(e) {
+    $('l-err').textContent = e.message.includes('incorrectos') ? 'Usuario o contraseña incorrectos' : e.message;
   } finally {
-    $('btn-login').disabled = false;
-    $('btn-login').textContent = 'Entrar';
+    $('l-btn').textContent = 'Acceder';
+    $('l-btn').disabled = false;
   }
 }
 
-$('btn-login').addEventListener('click', tryLogin);
-$('inp-pass').addEventListener('keydown', e => { if (e.key === 'Enter') tryLogin(); });
-$('btn-logout').addEventListener('click', () => cerrarSesion().then(mostrarLogin));
-$('btn-extender').addEventListener('click', () => { extenderSesion(); $('modal-inactividad').classList.remove('visible'); });
-$('btn-cerrar-modal').addEventListener('click', () => cerrarSesion().then(mostrarLogin));
+$('l-btn').addEventListener('click', tryLogin);
+$('l-pass').addEventListener('keydown', e => { if (e.key === 'Enter') tryLogin(); });
+$('btn-logout').addEventListener('click', () => cerrarSesion().then(() => location.reload()));
 
-// ── Cargar actividades ──────────────────────────────────────
+// Módulos nav
+document.querySelectorAll('.mod-btn').forEach(b => {
+  b.addEventListener('click', () => setModulo(b.dataset.mod));
+});
 
-async function cargarActividades() {
-  if (tabCargado['actividades-data']) return;
-  tabCargado['actividades-data'] = true;
+// Sub-nav (delegación)
+$('sub-nav').addEventListener('click', e => {
+  const b = e.target.closest('.sub-btn');
+  if (b) setView(b.dataset.view);
+});
 
-  const sesion = getSesion();
-  try {
-    const regs = await getRegistros({ usuarioId: sesion.sesionId });
-
-    // KPIs
-    const pendientes  = regs.filter(r => r.estado === 'pendiente').length;
-    const aprobados   = regs.filter(r => r.estado === 'aprobado').length;
-    const ofertadas   = regs.filter(r => r.estado === 'ofertada').length;
-    $('kpis-actividades').innerHTML = `
-      <div class="kpi-card"><div class="kpi-label">Total</div><div class="kpi-value">${regs.length}</div></div>
-      <div class="kpi-card"><div class="kpi-label">Pendientes</div><div class="kpi-value" style="color:var(--c-amber)">${pendientes}</div></div>
-      <div class="kpi-card"><div class="kpi-label">Aprobados</div><div class="kpi-value" style="color:var(--c-green)">${aprobados}</div></div>
-      <div class="kpi-card"><div class="kpi-label">Ofertadas</div><div class="kpi-value" style="color:var(--c-indigo)">${ofertadas}</div></div>
-    `;
-
-    // Tabla
-    $('tbody-actividades').innerHTML = regs.map(r => `
-      <tr>
-        <td>${fmtFecha(r.fecha)}</td>
-        <td>${r.tecnico?.nombre ?? '—'}</td>
-        <td>${r.proyecto?.nombre ?? '—'}</td>
-        <td>${r.proyecto?.zona ?? '—'}</td>
-        <td>${badge(r.estado)}</td>
-        <td>${r.estado_certif ? badge(r.estado_certif) : '—'}</td>
-      </tr>
-    `).join('');
-
-    $('loader-actividades').style.display   = 'none';
-    $('content-actividades').style.display  = 'block';
-  } catch(e) {
-    $('loader-actividades').textContent = `Error: ${e.message}`;
-  }
-}
-
-// ── Cargar facturas ─────────────────────────────────────────
-
-async function cargarFacturas() {
-  const sesion = getSesion();
-  try {
-    const facts = await getFacturas({ usuarioId: sesion.sesionId });
-
-    const totalBase  = facts.reduce((a, f) => a + Number(f.base_imponible || 0), 0);
-    const totalTotal = facts.reduce((a, f) => a + Number(f.total || 0), 0);
-    $('kpis-facturacion').innerHTML = `
-      <div class="kpi-card"><div class="kpi-label">Facturas</div><div class="kpi-value">${facts.length}</div></div>
-      <div class="kpi-card"><div class="kpi-label">Base total</div><div class="kpi-value" style="font-size:1.125rem">${fmtEuros(totalBase)}</div></div>
-      <div class="kpi-card"><div class="kpi-label">Total c/IVA</div><div class="kpi-value" style="font-size:1.125rem">${fmtEuros(totalTotal)}</div></div>
-    `;
-
-    $('tbody-facturas').innerHTML = facts.map(f => `
-      <tr>
-        <td><strong>${f.numero}</strong></td>
-        <td>${f.tipo}</td>
-        <td>${f.cliente?.nombre ?? '—'}</td>
-        <td>${fmtFecha(f.fecha)}</td>
-        <td>${fmtEuros(f.base_imponible)}</td>
-        <td><strong>${fmtEuros(f.total)}</strong></td>
-        <td>${badge(f.estado.toLowerCase())}</td>
-      </tr>
-    `).join('');
-
-    $('loader-facturacion').style.display  = 'none';
-    $('content-facturacion').style.display = 'block';
-  } catch(e) {
-    $('loader-facturacion').textContent = `Error: ${e.message}`;
-  }
-}
-
-// ── Arrancar ────────────────────────────────────────────────
-
+// ── Restaurar sesión ──────────────────────────────────────────
 (async () => {
   const sesion = await iniciarSesionDesdeStorage();
   if (sesion && sesion.usuario?.rol === 'admin') {
-    mostrarApp(sesion.usuario);
+    $('login').style.display = 'none';
+    $('app').style.display = 'block';
+    $('hdr-user').textContent = sesion.usuario.nombre;
+    setModulo('trabajos');
   }
 })();
 </script>
