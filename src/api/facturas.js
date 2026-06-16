@@ -1,21 +1,16 @@
-// ============================================================
-//  NorAcua Suite v3.0 — API: Facturas
-//  El número de factura se genera mediante la función atómica
-//  next_numero_factura() en PostgreSQL (FOR UPDATE, sin race condition).
-// ============================================================
-
+// NorAcua Suite v3.0 — API: Facturas (sin JOINs)
 import { SUPABASE_URL, SUPABASE_ANON } from '../config.js';
 
-async function sbFetch(path, opts = {}, usuarioId = null) {
+async function sbFetch(path, opts = {}) {
   const headers = {
-    'apikey':        SUPABASE_ANON,
-    'Authorization': `Bearer ${SUPABASE_ANON}`,
-    'Content-Type':  'application/json',
-    'Prefer':        'return=representation',
+    'apikey':          SUPABASE_ANON,
+    'Authorization':   `Bearer ${SUPABASE_ANON}`,
+    'Content-Type':    'application/json',
+    'Prefer':          'return=representation',
+    'Accept-Profile':  'v3',
+    'Content-Profile': 'v3',
     ...opts.headers,
   };
-  if (usuarioId) headers['X-App-User-Id'] = usuarioId;
-
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { ...opts, headers });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: res.statusText }));
@@ -25,18 +20,15 @@ async function sbFetch(path, opts = {}, usuarioId = null) {
   return text ? JSON.parse(text) : null;
 }
 
-async function rpcFetch(fn, params, usuarioId = null) {
+async function rpcFetch(fn, params) {
   const headers = {
-    'apikey':        SUPABASE_ANON,
-    'Authorization': `Bearer ${SUPABASE_ANON}`,
-    'Content-Type':  'application/json',
+    'apikey':          SUPABASE_ANON,
+    'Authorization':   `Bearer ${SUPABASE_ANON}`,
+    'Content-Type':    'application/json',
+    'Content-Profile': 'v3',
   };
-  if (usuarioId) headers['X-App-User-Id'] = usuarioId;
-
   const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(params),
+    method: 'POST', headers, body: JSON.stringify(params),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: res.statusText }));
@@ -45,80 +37,52 @@ async function rpcFetch(fn, params, usuarioId = null) {
   return res.json();
 }
 
-// ── LISTAR ────────────────────────────────────────────────────
-
-export async function getFacturas({ usuarioId, clienteId = null, serieId = null, estado = null } = {}) {
-  let q = 'na_facturas?order=fecha.desc&select=*,serie:na_series(codigo),cliente:na_clientes(nombre,codigo)';
+export async function getFacturas({ clienteId = null, serieId = null, estado = null } = {}) {
+  let q = 'na_facturas?order=fecha.desc&select=*';
   if (clienteId) q += `&cliente_id=eq.${clienteId}`;
   if (serieId)   q += `&serie_id=eq.${serieId}`;
   if (estado)    q += `&estado=eq.${estado}`;
-  return sbFetch(q, {}, usuarioId);
+  const facturas = await sbFetch(q);
+
+  const cliIds = [...new Set(facturas.map(f => f.cliente_id).filter(Boolean))];
+  const clientes = cliIds.length
+    ? await sbFetch(`na_clientes?id=in.(${cliIds.join(',')})&select=id,codigo,nombre`)
+    : [];
+
+  const cliMap = Object.fromEntries((clientes || []).map(c => [c.id, c]));
+
+  return facturas.map(f => ({
+    ...f,
+    cliente: cliMap[f.cliente_id] ?? null,
+  }));
 }
 
-export async function getFactura(id, usuarioId) {
-  const rows = await sbFetch(
-    `na_facturas?id=eq.${id}&select=*,lineas:na_lineas_factura(*),serie:na_series(codigo,iban),cliente:na_clientes(*)`,
-    {},
-    usuarioId
-  );
-  return rows?.[0] ?? null;
+export async function getFactura(id) {
+  const rows = await sbFetch(`na_facturas?id=eq.${id}&select=*`);
+  if (!rows?.[0]) return null;
+  const lineas = await sbFetch(`na_lineas_factura?factura_id=eq.${id}&order=orden.asc&select=*`);
+  return { ...rows[0], lineas: lineas || [] };
 }
 
-// ── CREAR FACTURA (con número atómico) ───────────────────────
-
-/**
- * Crear una factura nueva.
- * El número se genera en PostgreSQL con SELECT FOR UPDATE.
- * @param {object} data  - campos de na_facturas sin `numero`
- * @param {string} usuarioId - UUID del admin que crea la factura
- */
 export async function crearFactura(data, usuarioId) {
-  // 1. Obtener número atómico desde PostgreSQL
   const numero = await rpcFetch('next_numero_factura', {
     p_serie_id: data.serie_id,
     p_tipo:     data.tipo,
     p_fecha:    data.fecha,
-  }, usuarioId);
-
-  // 2. Insertar factura con el número obtenido
+  });
   return sbFetch('na_facturas', {
     method: 'POST',
-    body: JSON.stringify({
-      ...data,
-      numero,
-      creado_por_id: usuarioId,
-      creado_en:     new Date().toISOString(),
-    }),
-  }, usuarioId);
+    body: JSON.stringify({ ...data, numero, creado_por_id: usuarioId, creado_en: new Date().toISOString() }),
+  });
 }
 
-// ── LÍNEAS DE FACTURA ─────────────────────────────────────────
-
-export async function crearLineasFactura(factura_id, lineas, usuarioId) {
-  const rows = lineas.map((l, i) => ({ ...l, factura_id, orden: i }));
-  return sbFetch('na_lineas_factura', {
-    method: 'POST',
-    body: JSON.stringify(rows),
-    headers: { 'Prefer': 'return=representation' },
-  }, usuarioId);
-}
-
-// ── ACTUALIZAR ESTADO ─────────────────────────────────────────
-
-export async function actualizarEstadoFactura(id, estado, usuarioId) {
-  // La RLS impide cambiar Cobrada/Anulada
+export async function actualizarEstadoFactura(id, estado) {
   return sbFetch(`na_facturas?id=eq.${id}`, {
     method: 'PATCH',
     body: JSON.stringify({ estado }),
-  }, usuarioId);
+  });
 }
 
-// ── SERIES ────────────────────────────────────────────────────
-
-export async function getSeries(usuarioId) {
-  return sbFetch(
-    'na_series?select=*,cliente:na_clientes(codigo,nombre)&order=codigo.asc',
-    {},
-    usuarioId
-  );
+export async function getSeries() {
+  return sbFetch('na_series?select=*&order=codigo.asc');
 }

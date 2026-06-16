@@ -1,19 +1,16 @@
-// ============================================================
-//  NorAcua Suite v3.0 — API: Registros (Actividades)
-// ============================================================
-
+// NorAcua Suite v3.0 — API: Registros (sin JOINs para compatibilidad con schema v3)
 import { SUPABASE_URL, SUPABASE_ANON } from '../config.js';
 
-async function sbFetch(path, opts = {}, usuarioId = null) {
+async function sbFetch(path, opts = {}) {
   const headers = {
-    'apikey':        SUPABASE_ANON,
-    'Authorization': `Bearer ${SUPABASE_ANON}`,
-    'Content-Type':  'application/json',
-    'Prefer':        'return=representation',
+    'apikey':          SUPABASE_ANON,
+    'Authorization':   `Bearer ${SUPABASE_ANON}`,
+    'Content-Type':    'application/json',
+    'Prefer':          'return=representation',
+    'Accept-Profile':  'v3',
+    'Content-Profile': 'v3',
     ...opts.headers,
   };
-  if (usuarioId) headers['X-App-User-Id'] = usuarioId;
-
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { ...opts, headers });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: res.statusText }));
@@ -23,37 +20,35 @@ async function sbFetch(path, opts = {}, usuarioId = null) {
   return text ? JSON.parse(text) : null;
 }
 
-// ── SELECT ────────────────────────────────────────────────────
-
-/**
- * Listar registros activos (no eliminados).
- * Si tecnicoId se pasa, filtra por técnico (para la vista técnico).
- */
-export async function getRegistros({ usuarioId, tecnicoId = null, proyectoId = null } = {}) {
-  let q = 'na_registros?eliminado_en=is.null&order=fecha.desc';
-
+export async function getRegistros({ tecnicoId = null, proyectoId = null } = {}) {
+  let q = 'na_registros?eliminado_en=is.null&order=fecha.desc&select=*';
   if (tecnicoId)  q += `&tecnico_id=eq.${tecnicoId}`;
   if (proyectoId) q += `&proyecto_id=eq.${proyectoId}`;
+  const registros = await sbFetch(q);
 
-  // JOIN: traer datos básicos de proyecto, técnico y concepto
-  q += '&select=*,proyecto:na_proyectos(id,nombre,zona,cliente_id),tecnico:na_usuarios!tecnico_id(id,nombre),concepto:na_conceptos(id,nombre,unidad)';
+  // Enriquecer con datos de proyecto y técnico en llamadas separadas
+  const proyIds = [...new Set(registros.map(r => r.proyecto_id).filter(Boolean))];
+  const tecIds  = [...new Set(registros.map(r => r.tecnico_id).filter(Boolean))];
 
-  return sbFetch(q, {}, usuarioId);
+  const [proyectos, tecnicos] = await Promise.all([
+    proyIds.length ? sbFetch(`na_proyectos?id=in.(${proyIds.join(',')})&select=id,nombre,zona,cliente_id`) : [],
+    tecIds.length  ? sbFetch(`na_usuarios?id=in.(${tecIds.join(',')})&select=id,nombre`) : [],
+  ]);
+
+  const proyMap = Object.fromEntries((proyectos || []).map(p => [p.id, p]));
+  const tecMap  = Object.fromEntries((tecnicos  || []).map(t => [t.id, t]));
+
+  return registros.map(r => ({
+    ...r,
+    proyecto: proyMap[r.proyecto_id] ?? null,
+    tecnico:  tecMap[r.tecnico_id]   ?? null,
+  }));
 }
 
-/**
- * Obtener un registro por ID con sus líneas (si es grupo).
- */
-export async function getRegistro(id, usuarioId) {
-  const rows = await sbFetch(
-    `na_registros?id=eq.${id}&select=*,lineas:na_lineas_registro(*,concepto:na_conceptos(id,nombre,unidad))`,
-    {},
-    usuarioId
-  );
+export async function getRegistro(id) {
+  const rows = await sbFetch(`na_registros?id=eq.${id}&select=*`);
   return rows?.[0] ?? null;
 }
-
-// ── INSERT ────────────────────────────────────────────────────
 
 export async function crearRegistro(data, usuarioId) {
   return sbFetch('na_registros', {
@@ -65,50 +60,22 @@ export async function crearRegistro(data, usuarioId) {
       creado_en:      new Date().toISOString(),
       actualizado_en: new Date().toISOString(),
     }),
-  }, usuarioId);
+  });
 }
 
-export async function crearLineaRegistro(data, usuarioId) {
-  return sbFetch('na_lineas_registro', {
-    method: 'POST',
-    body: JSON.stringify(data),
-  }, usuarioId);
-}
-
-// ── UPDATE ────────────────────────────────────────────────────
-
-export async function actualizarRegistro(id, cambios, usuarioId) {
+export async function actualizarRegistro(id, cambios) {
   return sbFetch(`na_registros?id=eq.${id}`, {
     method: 'PATCH',
     body: JSON.stringify(cambios),
-  }, usuarioId);
+  });
 }
 
-/**
- * Soft delete — solo admin.
- * Pone eliminado_en = now() en lugar de borrar la fila.
- */
-export async function eliminarRegistro(id, usuarioId) {
+export async function eliminarRegistro(id) {
   return sbFetch(`na_registros?id=eq.${id}`, {
     method: 'PATCH',
     body: JSON.stringify({ eliminado_en: new Date().toISOString() }),
-  }, usuarioId);
+  });
 }
 
-// ── TRANSICIÓN DE ESTADO ──────────────────────────────────────
-
-export async function aprobarRegistro(id, usuarioId) {
-  return actualizarRegistro(id, { estado: 'aprobado' }, usuarioId);
-}
-
-export async function rechazarRegistro(id, usuarioId) {
-  return actualizarRegistro(id, { estado: 'rechazado' }, usuarioId);
-}
-
-export async function enviarCertificacion(id, usuarioId) {
-  return actualizarRegistro(id, { estado_certif: 'enviada' }, usuarioId);
-}
-
-export async function aprobarCertificacion(id, usuarioId) {
-  return actualizarRegistro(id, { estado_certif: 'aprobada' }, usuarioId);
-}
+export async function aprobarRegistro(id)  { return actualizarRegistro(id, { estado: 'aprobado' }); }
+export async function rechazarRegistro(id) { return actualizarRegistro(id, { estado: 'rechazado' }); }
