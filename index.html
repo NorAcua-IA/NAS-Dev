@@ -66,10 +66,10 @@ const dbUsuarios = {
 
 // Series de facturación
 const dbSeries = {
-  getAll: () => _sb('/rest/v1/na_series?eliminado_en=is.null&order=codigo.asc&limit=100'),
+  getAll: () => _sb('/rest/v1/na_series?order=codigo.asc&limit=100'),
   upsert: row => _sb('/rest/v1/na_series', { method: 'POST', body: JSON.stringify(row), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } }),
   patch: (id, data) => _sb('/rest/v1/na_series?id=eq.' + id, { method: 'PATCH', body: JSON.stringify(data) }),
-  softDelete: id => _sb('/rest/v1/na_series?id=eq.' + id, { method: 'PATCH', body: JSON.stringify({ eliminado_en: new Date().toISOString() }) })
+  softDelete: id => _sb('/rest/v1/na_series?id=eq.' + id, { method: 'DELETE' })
 };
 
 // Registros de actividad
@@ -140,7 +140,7 @@ const dbCapitulos = {
 
 // Sesiones (último login)
 const dbSesiones = {
-  getLastLogin: userId => _sb('/rest/v1/na_sesiones?usuario_id=eq.' + userId + '&order=inicio_en.desc&limit=2'),
+  getLastLogin: userId => _sb('/rest/v1/na_sesiones?usuario_id=eq.' + userId + '&order=iniciada_en.desc&limit=2'),
   insert: row => _sb('/rest/v1/na_sesiones', { method: 'POST', body: JSON.stringify(row), headers: { 'Prefer': 'return=minimal' } })
 };
 
@@ -237,48 +237,61 @@ function _rowToOferta(row) {
 
 // Convierte fila v3 de na_hsse_supervisiones al formato interno React
 function _rowToHsse(row) {
+  // Extended fields are in datos_supervision jsonb
+  const d = (row.datos_supervision && typeof row.datos_supervision === 'object') ? row.datos_supervision : {};
+  const horas = d.horas != null ? d.horas : (row.horas_facturables != null ? String(row.horas_facturables) : '');
   return {
     id: row.id,
-    site: row.site || '',
-    tipoActividad: row.tipo_actividad || '',
-    pctAuditoria: row.pct_auditoria != null ? String(row.pct_auditoria) : '',
-    obraConSupervision: row.obra_con_supervision != null ? String(row.obra_con_supervision) : '',
+    site: d.site || '',
+    tipoActividad: d.tipoActividad || row.tipo || '',
+    pctAuditoria: d.pctAuditoria != null ? String(d.pctAuditoria) : '',
+    obraConSupervision: d.obraConSupervision != null ? String(d.obraConSupervision) : '',
     fecha: row.fecha,
-    horas: row.horas != null ? String(row.horas) : '',
-    supervisor: row.supervisor || '',
-    encargo: row.encargo || '',
+    horas: horas !== '' ? String(horas) : '',
+    horasAdmin: d.horasAdmin != null ? d.horasAdmin : (row.horas_facturables != null ? row.horas_facturables : null),
+    supervisor: d.supervisor || '',
+    encargo: d.encargo || '',
     zona: row.zona || '',
-    incidencias: row.incidencias != null ? String(row.incidencias) : '',
-    motivoSupervision: row.motivo_supervision || '',
-    empresa: row.empresa || '',
-    comentarios: row.comentarios || '',
-    importe: row.importe != null ? row.importe : null,
-    estado: row.estado || 'pendiente',
-    facturaId: row.factura_id || null,
+    incidencias: d.incidencias != null ? String(d.incidencias) : '',
+    motivoSupervision: d.motivoSupervision || '',
+    empresa: d.empresa || '',
+    comentarios: d.comentarios || '',
+    importe: d.importe != null ? d.importe : null,
+    estado: row.estado === 'aprobada' ? 'aprobado' : (row.estado === 'completada' ? 'anulado' : row.estado || 'pendiente'),
+    facturaId: d.facturaId || null,
     createdAt: row.creado_en || row.fecha
   };
 }
 
 // Convierte objeto HSSE interno a fila v3
 function _hsseToRow(sup) {
+  // na_hsse_supervisiones real columns: tipo, zona, fecha, horas_facturables, datos_supervision (jsonb), estado, po
+  // All extended fields go into datos_supervision jsonb
   return {
     id: sup.id,
-    site: sup.site || '',
-    tipo_actividad: sup.tipoActividad || '',
-    pct_auditoria: sup.pctAuditoria !== '' ? parseFloat(sup.pctAuditoria) : null,
-    obra_con_supervision: sup.obraConSupervision !== '' ? parseFloat(sup.obraConSupervision) : null,
-    fecha: sup.fecha,
-    horas: sup.horas !== '' ? parseFloat(sup.horas) : null,
-    supervisor: sup.supervisor || '',
-    encargo: sup.encargo || '',
+    tipo: sup.tipoActividad || '',
     zona: sup.zona || '',
-    incidencias: sup.incidencias !== '' ? parseInt(sup.incidencias) : null,
-    motivo_supervision: sup.motivoSupervision || '',
-    empresa: sup.empresa || '',
-    comentarios: sup.comentarios || '',
-    importe: sup.importe != null ? sup.importe : null,
-    estado: sup.estado || 'pendiente',
-    factura_id: sup.facturaId || null,
+    fecha: sup.fecha,
+    horas_facturables: sup.horas !== '' && sup.horas != null ? parseFloat(sup.horas) : null,
+    estado: sup.estado === 'pendiente' ? 'pendiente' : (sup.estado === 'aprobado' ? 'aprobada' : (sup.estado === 'anulado' ? 'completada' : sup.estado || 'pendiente')),
+    po: sup.po || null,
+    datos_supervision: {
+      site: sup.site || '',
+      tipoActividad: sup.tipoActividad || '',
+      pctAuditoria: sup.pctAuditoria || '',
+      obraConSupervision: sup.obraConSupervision || '',
+      horas: sup.horas || '',
+      horasAdmin: sup.horasAdmin != null ? sup.horasAdmin : sup.horas,
+      supervisor: sup.supervisor || '',
+      encargo: sup.encargo || '',
+      incidencias: sup.incidencias || '',
+      motivoSupervision: sup.motivoSupervision || '',
+      empresa: sup.empresa || '',
+      comentarios: sup.comentarios || '',
+      importe: sup.importe != null ? sup.importe : null,
+      facturaId: sup.facturaId || null,
+      facturado: !!sup.facturaId
+    },
     creado_en: sup.createdAt || new Date().toISOString()
   };
 }
@@ -313,7 +326,10 @@ function _rowsToConcs(capitulos, conceptos) {
   const capCodMap = {};
   const capNomMap = {}; // para fallback por nombre
   (capitulos || []).forEach((cap, idx) => {
-    const cod = cap.codigo || String(cap.orden || idx + 1);
+    // na_capitulos.codigo is "CAP01","CAP02"... convert to short code "1","2"...
+    // that matches CAP_BASE.cap which uses "1","2"...
+    const rawCod = cap.codigo || '';
+    const cod = rawCod.replace(/^CAP0?/, '') || String(cap.orden || idx + 1);
     capCodMap[cap.id] = cod;
     capNomMap[cap.id] = cap.nombre || '';
   });
@@ -327,12 +343,23 @@ function _rowsToConcs(capitulos, conceptos) {
     if (hayCapitulos && c.capitulo_id) {
       capId = capCodMap[c.capitulo_id] || c.capitulo_id;
     }
+    // v3 schema: precio es una sola columna; precios_zona puede estar en datos_extra o deducido
+    // Si el schema tiene precios_zona (jsonb) usarlo; si no, mapear precio único a todas las zonas
+    let p;
+    if (c.precios_zona && typeof c.precios_zona === 'object') {
+      p = c.precios_zona;
+    } else if (c.precio != null) {
+      // precio único → aplicar a todas las zonas (simplificación hasta cargar preciario BP)
+      p = { CENTRO: c.precio, NORTE: c.precio, 'CATALUÑA': c.precio, BALEARES: c.precio, OTROS: c.precio };
+    } else {
+      p = { CENTRO: null, NORTE: null, 'CATALUÑA': null, BALEARES: null, OTROS: null };
+    }
     return {
       id: c.id,
       nombre: c.nombre || '',
       capId,
       activo: c.activo !== false,
-      p: c.precios_zona || { CENTRO: null, NORTE: null, 'CATALUÑA': null, BALEARES: null, OTROS: null }
+      p
     };
   });
 }
@@ -343,7 +370,8 @@ function _concsToRows(concs) {
     id: item.id,
     nombre: item.nombre || '',
     capitulo_id: item.capId || null,
-    precios_zona: item.p || {},
+    precios_zona: item.p || {},   // si la columna existe en el schema
+    precio: item.p?.CENTRO ?? null,  // columna precio (schema v3 real)
     activo: item.activo !== false
   }));
 }
@@ -3679,18 +3707,25 @@ function App() {
         setHistorico(histActividad.map(_rowToInforme));
 
         // 6b. Histórico HSSE
-        const hsseHistV3 = (hsseHistRows || []).map(r => ({
-          id: r.id,
-          nom: r.periodo || r.id,
-          html: r.html || '',
-          desde: r.periodo ? r.periodo.split('/')[0] : '',
-          hasta: r.periodo ? r.periodo.split('/')[1] : '',
-          po: r.po || '',
-          periodo: r.periodo || '',
-          supIds: (() => { try { return JSON.parse(r.reg_ids || '[]'); } catch { return []; } })(),
-          facturado: false,
-          creadoEn: r.creado_en || ''
-        }));
+        const hsseHistV3 = (hsseHistRows || []).map(r => {
+          let meta = {};
+          try { if (r.po && r.po.startsWith('{')) meta = JSON.parse(r.po); } catch {}
+          return {
+            id: r.id,
+            nom: meta.nom || r.periodo || r.id,
+            html: r.html || '',
+            desde: meta.desde || (r.periodo ? r.periodo.split('/')[0] : ''),
+            hasta: meta.hasta || (r.periodo ? r.periodo.split('/')[1] : ''),
+            po: meta.po || '',
+            periodo: r.periodo || '',
+            numSups: meta.numSups || 0,
+            totalHoras: meta.totalHoras || 0,
+            totalImporte: meta.totalImporte || 0,
+            supIds: (() => { try { return JSON.parse(r.reg_ids || '[]'); } catch { return []; } })(),
+            facturado: meta.facturado || false,
+            creadoEn: r.creado_en || ''
+          };
+        });
         setHsseHist(hsseHistV3);
 
         // 7. Clientes
@@ -3717,9 +3752,9 @@ function App() {
           id: r.id,
           codigo: r.codigo || '',
           nombre: r.nombre || '',
-          contFact: r.cont_fact || 0,
-          contSupl: r.cont_supl || 0,
-          contAbon: r.cont_abon || 0,
+          contFact: r.cont_factura || 0,
+          contSupl: r.cont_suplido || 0,
+          contAbon: r.cont_abono || 0,
           ultimaFechaFact: r.ultima_fecha_fact || '',
           ultimaFechaSupl: r.ultima_fecha_supl || '',
           ultimaFechaAbon: r.ultima_fecha_abon || ''
@@ -3915,7 +3950,7 @@ function App() {
         try {
           const rows = series.map(s => ({
             id: s.id, codigo: s.codigo, nombre: s.nombre || '',
-            cont_fact: s.contFact || 0, cont_supl: s.contSupl || 0, cont_abon: s.contAbon || 0,
+            cont_factura: s.contFact || 0, cont_suplido: s.contSupl || 0, cont_abono: s.contAbon || 0,
             ultima_fecha_fact: s.ultimaFechaFact || null,
             ultima_fecha_supl: s.ultimaFechaSupl || null,
             ultima_fecha_abon: s.ultimaFechaAbon || null
@@ -4024,7 +4059,7 @@ function App() {
             id: inf.id,
             html: inf.html || '',
             periodo: inf.periodo || (inf.desde && inf.hasta ? inf.desde + '/' + inf.hasta : ''),
-            po: inf.po || null,
+            po: JSON.stringify({ nom: inf.nom, desde: inf.desde, hasta: inf.hasta, po: inf.po || '', numSups: inf.numSups, totalHoras: inf.totalHoras, totalImporte: inf.totalImporte, facturado: inf.facturado }),
             reg_ids: JSON.stringify(inf.supIds || []),
             creado_en: inf.creadoEn || new Date().toISOString(),
             tipo: 'hsse'
@@ -4070,8 +4105,8 @@ function App() {
     try {
       if (u.id) {
         const sesiones = await dbSesiones.getLastLogin(u.id) || [];
-        prevLogin = sesiones[1]?.inicio_en || sesiones[0]?.inicio_en || null;
-        await dbSesiones.insert({ usuario_id: u.id, inicio_en: ahora });
+        prevLogin = sesiones[1]?.iniciada_en || sesiones[0]?.iniciada_en || null;
+        await dbSesiones.insert({ usuario_id: u.id, iniciada_en: ahora });
       }
     } catch(e) { console.warn('[NorAcuaV3] sesión login:', e.message); }
     setLastLogin(prevLogin);
