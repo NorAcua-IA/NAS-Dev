@@ -295,55 +295,53 @@ function _rowToInforme(row) {
   };
 }
 
-// Convierte fila v3 de na_conceptos al formato CAP_BASE interno
-// Los conceptos v3 tienen: id, codigo, nombre, capitulo_id, precios_zona (jsonb), activo
+// Convierte filas v3 de na_conceptos al formato plano que espera React (igual que FRESH_CAT)
+// FRESH_CAT = array plano de items con {id, nombre, capId, p, activo}
 function _rowsToConcs(capitulos, conceptos) {
-  // Agrupar conceptos por capítulo
-  const capMap = {};
-  (capitulos || []).forEach(cap => {
-    capMap[cap.id] = { cap: cap.codigo || cap.id, nombre: cap.nombre, items: [] };
+  // Mapa capitulo_id → código corto del capítulo (ej. "1", "2"...)
+  // Intentamos primero con la columna "codigo", luego con "orden", luego con índice
+  const capCodMap = {};
+  const capNomMap = {}; // para fallback por nombre
+  (capitulos || []).forEach((cap, idx) => {
+    const cod = cap.codigo || String(cap.orden || idx + 1);
+    capCodMap[cap.id] = cod;
+    capNomMap[cap.id] = cap.nombre || '';
   });
-  (conceptos || []).forEach(c => {
-    const capEntry = capMap[c.capitulo_id];
-    const item = {
+
+  // Si no hay capitulos en BD, intentar deducir capId del nombre del concepto
+  // comparando con CAP_BASE (fallback para cuando preciario_bp_produccion.sql aún no se ha cargado)
+  const hayCapitulos = Object.keys(capCodMap).length > 0;
+
+  return (conceptos || []).map(c => {
+    let capId = '';
+    if (hayCapitulos && c.capitulo_id) {
+      capId = capCodMap[c.capitulo_id] || c.capitulo_id;
+    }
+    return {
       id: c.id,
-      nombre: c.nombre,
-      capId: c.capitulo_id || '',
+      nombre: c.nombre || '',
+      capId,
       activo: c.activo !== false,
       p: c.precios_zona || { CENTRO: null, NORTE: null, 'CATALUÑA': null, BALEARES: null, OTROS: null }
     };
-    if (capEntry) capEntry.items.push(item);
-    else {
-      // Concepto sin capítulo conocido — añadir a una cap "misc"
-      if (!capMap['__misc']) capMap['__misc'] = { cap: '?', nombre: 'Sin capítulo', items: [] };
-      capMap['__misc'].items.push(item);
-    }
   });
-  return Object.values(capMap);
 }
 
-// Convierte la estructura interna concs[] a filas na_conceptos para upsert
+// Convierte el array plano concs[] a filas na_conceptos para upsert
 function _concsToRows(concs) {
-  const rows = [];
-  concs.forEach(cap => {
-    (cap.items || []).forEach(item => {
-      rows.push({
-        id: item.id,
-        nombre: item.nombre,
-        capitulo_id: item.capId || null,
-        precios_zona: item.p || {},
-        activo: item.activo !== false
-      });
-    });
-  });
-  return rows;
+  return concs.map(item => ({
+    id: item.id,
+    nombre: item.nombre || '',
+    capitulo_id: item.capId || null,
+    precios_zona: item.p || {},
+    activo: item.activo !== false
+  }));
 }
 
-// Guarda un array de conceptos a Supabase v3 (reemplaza aesEnc/sv(SK.cEnc,...))
+// Guarda conceptos a Supabase v3 (reemplaza aesEnc/sv(SK.cEnc,...))
 async function saveConcsV3(arr) {
   const rows = _concsToRows(arr);
   if (!rows.length) return;
-  // Upsert en lotes de 50
   for (let i = 0; i < rows.length; i += 50) {
     await _sb('/rest/v1/na_conceptos', {
       method: 'POST',
@@ -692,6 +690,8 @@ async function autoBackup(datos) {
   } catch(e) { console.warn('[NorAcua] autoBackup error:', e.message); }
 }
 const APP_VERSION = "3.0";
+// v3: generador de UUID para nuevos registros
+const uuid = () => crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random()*16|0; return (c==='x'?r:(r&0x3|0x8)).toString(16); });
 if (typeof window !== "undefined" && window.localStorage) {
   const lastLoad = window.localStorage.getItem("na_lastload");
   const now = Date.now();
@@ -2235,7 +2235,7 @@ function genNumOferta(cfg) {
   return `${String((cfg.contadorActual || 0) + 1).padStart(3, "0")}-${yr}`;
 }
 const lineaV = () => ({
-  id: `l${Date.now()}${Math.random().toString(36).slice(2)}`,
+  id: uuid(),
   concepto: "",
   uds: 1,
   precio: 0,
@@ -3776,7 +3776,7 @@ function App() {
 
         // 14. Conceptos / preciario (sin cifrado en v3)
         const concsV3 = _rowsToConcs(capsRows || [], concRows || []);
-        if (concsV3.length > 0 && concsV3.some(cap => cap.items.length > 0)) {
+        if (concsV3.length > 0) {
           setConcs(concsV3);
         } else {
           // Preciario aún no cargado — usar CAP_BASE como fallback
@@ -3826,207 +3826,202 @@ function App() {
     return () => { clearTimeout(_t); clearInterval(_bkInterval); document.removeEventListener('visibilitychange', _onVisible); };
   }, []);
 
-  // ── v3: useEffects de PERSISTENCIA — cada cambio de estado se persiste en BD ──
+  // ── v3: useEffects de PERSISTENCIA — batch upserts con debounce ─────────────
 
-  // Proyectos: upsert de los modificados
   useEffect(() => {
-    if (!loading) {
-      // Debounce 800ms para no saturar en ediciones rápidas
+    if (!loading && proyectos.length > 0) {
       clearTimeout(window._bkProy);
       window._bkProy = setTimeout(async () => {
         try {
-          for (const proy of proyectos) {
-            await dbProyectos.upsert({
-              id: proy.id,
-              nombre: proy.nombre || '',
-              po: proy.po || null,
-              zona: proy.zona || null,
-              responsable_bp: proy.responsableBP || null,
-              estacion: proy.estacion || null,
-              cliente_id: proy.clienteId || null,
-              activo: proy.activo !== false,
-              creado_en: proy.creadoEn || new Date().toISOString()
-            });
-          }
+          const rows = proyectos.map(p => ({
+            id: p.id, nombre: p.nombre || '', po: p.po || null,
+            zona: p.zona || null, responsable_bp: p.responsableBP || null,
+            estacion: p.estacion || null, cliente_id: p.clienteId || null,
+            activo: p.activo !== false, creado_en: p.creadoEn || new Date().toISOString()
+          }));
+          await _sb('/rest/v1/na_proyectos', { method: 'POST', body: JSON.stringify(rows), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } });
         } catch(e) { console.error('[NorAcuaV3] persistencia proyectos:', e); }
-      }, 800);
+      }, 1000);
     }
   }, [proyectos, loading]);
 
-  // Registros: upsert individual al cambiar
   useEffect(() => {
-    if (!loading) {
+    if (!loading && registros.length > 0) {
       clearTimeout(window._bkRegs);
       window._bkRegs = setTimeout(async () => {
         try {
-          for (const reg of registros) {
-            await saveRegistroV3(reg);
+          const rows = registros.map(reg => _regToRow(reg, window._naTecnicoIdMap));
+          for (let i = 0; i < rows.length; i += 100) {
+            await _sb('/rest/v1/na_registros', { method: 'POST', body: JSON.stringify(rows.slice(i, i+100)), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } });
           }
         } catch(e) { console.error('[NorAcuaV3] persistencia registros:', e); }
-      }, 800);
+      }, 1200);
     }
   }, [registros, loading]);
 
-  // Trabajadores: en v3 viven en na_usuarios, no se persisten por separado
   useEffect(() => {}, [trabs, loading]);
 
-  // Responsables: upsert
   useEffect(() => {
-    if (!loading) {
+    if (!loading && resps.length > 0) {
       clearTimeout(window._bkResps);
       window._bkResps = setTimeout(async () => {
         try {
-          for (const r of resps) {
-            if (!r.id) continue; // solo los que vienen de BD
-            await dbResponsables.upsert({ id: r.id, nombre: r.nombre, sexo: r.sexo || 'M' });
-          }
+          const rows = resps.filter(r => r.id).map(r => ({ id: r.id, nombre: r.nombre, sexo: r.sexo || 'M' }));
+          if (rows.length) await _sb('/rest/v1/na_responsables', { method: 'POST', body: JSON.stringify(rows), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } });
         } catch(e) { console.error('[NorAcuaV3] persistencia resps:', e); }
-      }, 800);
+      }, 1000);
     }
   }, [resps, loading]);
 
-  // Usuarios: no se persisten desde aquí (se usan endpoints específicos)
   useEffect(() => {}, [usrs, loading]);
 
-  // Histórico (informes): upsert
   useEffect(() => {
-    if (!loading) {
+    if (!loading && historico.length > 0) {
       clearTimeout(window._bkHist);
       window._bkHist = setTimeout(async () => {
         try {
-          for (const inf of historico) {
-            await dbInformes.upsert({
-              id: inf.id,
-              html: inf.html || '',
-              periodo: inf.periodo || '',
-              po: inf.po || null,
-              reg_ids: JSON.stringify(inf.regIds || []),
-              creado_en: inf.createdAt || new Date().toISOString(),
-              tipo: inf.tipo || 'actividad'
-            });
+          const rows = historico.map(inf => ({
+            id: inf.id, html: inf.html || '', periodo: inf.periodo || '',
+            po: inf.po || null, reg_ids: JSON.stringify(inf.regIds || []),
+            creado_en: inf.creadoEn || new Date().toISOString(), tipo: inf.tipo || 'actividad'
+          }));
+          for (let i = 0; i < rows.length; i += 50) {
+            await _sb('/rest/v1/na_informes', { method: 'POST', body: JSON.stringify(rows.slice(i, i+50)), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } });
           }
-        } catch(e) { console.error('[NorAcuaV3] persistencia histórico:', e); }
-      }, 800);
+        } catch(e) { console.error('[NorAcuaV3] persistencia historico:', e); }
+      }, 1000);
     }
   }, [historico, loading]);
 
-  // deletedRegIds/deletedHistIds — en v3 son soft deletes en BD, no hay set local que persistir
   useEffect(() => {}, [deletedRegIds, deletedHistIds, loading]);
 
-  // Clientes: upsert
   useEffect(() => {
-    if (!loading) {
+    if (!loading && clientes.length > 0) {
       clearTimeout(window._bkCli);
       window._bkCli = setTimeout(async () => {
         try {
-          for (const c of clientes) {
-            await dbClientes.upsert({
-              id: c.id,
-              nombre: c.nombre || '',
-              nif: c.nif || null,
-              codigo_ref: c.codigoRef || null,
-              direccion: c.direccion || null,
-              poblacion: c.poblacion || null,
-              iban: c.iban || null,
-              email_facturacion: c.emailFact || null,
-              dias_vencimiento: c.diasVto || 30,
-              metodo_pago: c.metodoPago || 'Transferencia bancaria',
-              serie_defecto: c.serieDefecto || 'DR',
-              iva_defecto: c.ivaDefecto || 21,
-              concepto_cliente: c.conceptoCliente || null,
-              forma_pago: c.formaPago || 'Según contrato'
-            });
-          }
+          const rows = clientes.map(c => ({
+            id: c.id, nombre: c.nombre || '', nif: c.nif || null,
+            codigo_ref: c.codigoRef || null, direccion: c.direccion || null,
+            poblacion: c.poblacion || null, iban: c.iban || null,
+            email_facturacion: c.emailFact || null, dias_vencimiento: c.diasVto || 30,
+            metodo_pago: c.metodoPago || 'Transferencia bancaria',
+            serie_defecto: c.serieDefecto || 'DR', iva_defecto: c.ivaDefecto || 21,
+            concepto_cliente: c.conceptoCliente || null, forma_pago: c.formaPago || 'Según contrato'
+          }));
+          await _sb('/rest/v1/na_clientes', { method: 'POST', body: JSON.stringify(rows), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } });
         } catch(e) { console.error('[NorAcuaV3] persistencia clientes:', e); }
-      }, 800);
+      }, 1000);
     }
   }, [clientes, loading]);
 
-  // Series: upsert
   useEffect(() => {
-    if (!loading) {
+    if (!loading && series.length > 0) {
       clearTimeout(window._bkSeries);
       window._bkSeries = setTimeout(async () => {
         try {
-          for (const s of series) {
-            await dbSeries.upsert({
-              id: s.id,
-              codigo: s.codigo,
-              nombre: s.nombre || '',
-              cont_fact: s.contFact || 0,
-              cont_supl: s.contSupl || 0,
-              cont_abon: s.contAbon || 0,
-              ultima_fecha_fact: s.ultimaFechaFact || null,
-              ultima_fecha_supl: s.ultimaFechaSupl || null,
-              ultima_fecha_abon: s.ultimaFechaAbon || null
-            });
-          }
+          const rows = series.map(s => ({
+            id: s.id, codigo: s.codigo, nombre: s.nombre || '',
+            cont_fact: s.contFact || 0, cont_supl: s.contSupl || 0, cont_abon: s.contAbon || 0,
+            ultima_fecha_fact: s.ultimaFechaFact || null,
+            ultima_fecha_supl: s.ultimaFechaSupl || null,
+            ultima_fecha_abon: s.ultimaFechaAbon || null
+          }));
+          await _sb('/rest/v1/na_series', { method: 'POST', body: JSON.stringify(rows), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } });
         } catch(e) { console.error('[NorAcuaV3] persistencia series:', e); }
       }, 800);
     }
   }, [series, loading]);
 
-  // Facturas: upsert con líneas
   useEffect(() => {
-    if (!loading) {
+    if (!loading && facturas.length > 0) {
       clearTimeout(window._bkFact);
       window._bkFact = setTimeout(async () => {
         try {
-          for (const f of facturas) { await saveFacturaV3(f); }
+          const factRows = facturas.map(f => ({
+            id: f.id, numero: f.numero || '', tipo: f.tipo || 'Factura',
+            estado: f.estado || 'Borrador', fecha: f.fecha,
+            fecha_vencimiento: f.fechaVto || null, cliente_id: f.clienteId || null,
+            cliente_nombre: f.clienteNombre || '', serie_id: f.serieId || null,
+            concepto: f.concepto || '', po: f.po || null, notas: f.notas || '',
+            creado_en: f.creadoEn || new Date().toISOString(),
+            base_imponible: f.baseImponible ?? null, total_iva: f.totalIva ?? null, total: f.total ?? null
+          }));
+          for (let i = 0; i < factRows.length; i += 50) {
+            await _sb('/rest/v1/na_facturas', { method: 'POST', body: JSON.stringify(factRows.slice(i, i+50)), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } });
+          }
+          const linRows = [];
+          facturas.forEach(f => {
+            if (!Array.isArray(f.lineas)) return;
+            f.lineas.forEach((l, i) => linRows.push({
+              id: l.id || uuid(), factura_id: f.id,
+              descripcion: l.concepto || l.descripcion || '',
+              uds: parseFloat(l.uds) || 1, precio_unitario: parseFloat(l.precio) || 0,
+              descuento: parseFloat(l.descuento) || 0, iva: parseFloat(l.iva) || 21,
+              es_cabecera: !!l.esCabecera, orden: i
+            }));
+          });
+          for (let i = 0; i < linRows.length; i += 200) {
+            await _sb('/rest/v1/na_lineas_factura', { method: 'POST', body: JSON.stringify(linRows.slice(i, i+200)), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } });
+          }
         } catch(e) { console.error('[NorAcuaV3] persistencia facturas:', e); }
-      }, 800);
+      }, 1000);
     }
   }, [facturas, loading]);
 
-  // Estaciones: upsert por nombre
   useEffect(() => {
-    if (!loading) {
+    if (!loading && estaciones.length > 0) {
       clearTimeout(window._bkEst);
       window._bkEst = setTimeout(async () => {
         try {
-          for (const nombre of estaciones) {
-            // Usar nombre como id (slug) si no hay uuid
-            const id = nombre.toLowerCase().replace(/[^a-z0-9]/g, '_');
-            await dbEstaciones.upsert({ id, nombre });
-          }
+          const rows = estaciones.map(nombre => ({ id: (nombre||'').toLowerCase().replace(/[^a-z0-9]/gi,'_').slice(0,50), nombre }));
+          await _sb('/rest/v1/na_estaciones', { method: 'POST', body: JSON.stringify(rows), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } });
         } catch(e) { console.error('[NorAcuaV3] persistencia estaciones:', e); }
-      }, 1200);
+      }, 1500);
     }
   }, [estaciones, loading]);
 
-  // Ofertas: upsert
   useEffect(() => {
-    if (!loading) {
+    if (!loading && Array.isArray(ofertas) && ofertas.length > 0) {
       clearTimeout(window._bkOfer);
       window._bkOfer = setTimeout(async () => {
         try {
-          for (const of_ of (Array.isArray(ofertas) ? ofertas : [])) { await saveOfertaV3(of_); }
+          const rows = ofertas.map(o => ({
+            id: o.id, numero: o.numero || '', asunto: o.asunto || '',
+            estado: o.estado || 'Borrador', fecha: o.fecha,
+            cliente_id: o.clienteId || null, estacion: o.estacion || '',
+            zona: o.zona || '', responsable: o.responsable || '',
+            lineas: JSON.stringify(o.lineas || []), version: o.version || 1,
+            referencia: o.ref || '', notas: o.notas || '',
+            creado_en: o.creadoEn || new Date().toISOString()
+          }));
+          for (let i = 0; i < rows.length; i += 100) {
+            await _sb('/rest/v1/na_ofertas', { method: 'POST', body: JSON.stringify(rows.slice(i, i+100)), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } });
+          }
         } catch(e) { console.error('[NorAcuaV3] persistencia ofertas:', e); }
-      }, 800);
+      }, 1000);
     }
   }, [ofertas, loading]);
 
-  // cfgOfertas: en v3 el contador vive en na_series — no persistir por separado
   useEffect(() => {}, [cfgOfertas, loading]);
 
-  // HSSE supervisiones: upsert
-  useEffect(()=>{
-    if(!loading){
+  useEffect(() => {
+    if (!loading && hsseSups.length > 0) {
       clearTimeout(window._bkHsse);
-      window._bkHsse = setTimeout(async()=>{
+      window._bkHsse = setTimeout(async () => {
         try {
-          for (const s of hsseSups) { await dbHsse.upsert(_hsseToRow(s)); }
+          const rows = hsseSups.map(_hsseToRow);
+          for (let i = 0; i < rows.length; i += 100) {
+            await _sb('/rest/v1/na_hsse_supervisiones', { method: 'POST', body: JSON.stringify(rows.slice(i, i+100)), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } });
+          }
         } catch(e) { console.error('[NorAcuaV3] persistencia hsse:', e); }
-      }, 800);
+      }, 1000);
     }
-  },[hsseSups,loading]);
+  }, [hsseSups, loading]);
 
-  // hsseCfg e hsseHist: en v3 se guardan como JSON en na_informes tipo 'hsse_cfg'
-  useEffect(()=>{},[hsseCfg,hsseInfCounter,loading]);
-  useEffect(()=>{},[hsseHist,loading]);
-
-  // Referencia de estado actual (para visibilitychange)
-  useEffect(()=>{ window._naStateRef = { hsseSups, facturas }; },[hsseSups,facturas]);
+  useEffect(() => {}, [hsseCfg, hsseInfCounter, loading]);
+  useEffect(() => {}, [hsseHist, loading]);
+  useEffect(() => { window._naStateRef = { hsseSups, facturas }; }, [hsseSups, facturas]);
 
   // ── v3: saveConcs sin cifrado AES ────────────────────────────────────────
   const saveConcs = async arr => {
@@ -4048,7 +4043,7 @@ function App() {
     // Los técnicos ya tienen concs con precios null desde la carga inicial
     // (la vista na_conceptos_tecnico filtra precios; el admin ve na_conceptos completo)
     // Si concs está vacío (preciario pendiente), usar FRESH_CAT como fallback
-    if (concs.length === 0 || !concs.some(cap => cap.items && cap.items.length > 0)) {
+    if (concs.length === 0) {
       setConcs(FRESH_CAT);
     }
     // keyRef ya no se usa para AES en v3, se mantiene inerte
@@ -4233,9 +4228,10 @@ function App() {
   };
   const addProy = () => {
     if (!fPr.nombre || !fPr.zona) return;
+    const newId = uuid();
     setProyectos(p => [...p, {
       ...fPr,
-      id: `p${Date.now()}`,
+      id: newId,
       creadoEn: new Date().toISOString(),
       creadoPor: user?.nombre || "admin"
     }]);
@@ -4249,7 +4245,10 @@ function App() {
     setMEProy(null);
   };
   const delP = id => {
+    // v3: soft delete en BD + quitar de React
+    dbProyectos.softDelete(id).catch(e => console.error('[NorAcuaV3] delP:', e));
     setProyectos(p => p.filter(x => x.id !== id));
+    // Los registros del proyecto quedan en BD con su proyecto_id; solo los ocultamos en UI
     setRegistros(r => r.filter(x => x.proyectoId !== id));
   };
 
@@ -4257,7 +4256,7 @@ function App() {
   const addRegLinea = conceptoId => {
     if (!conceptoId) return;
     setRegLineas(prev => [...prev, {
-      id: `rl${Date.now()}`,
+      id: uuid(),
       conceptoId,
       cantidad: "1",
       observaciones: ""
@@ -4270,21 +4269,21 @@ function App() {
   } : x));
   const addRegMulti = () => {
     if (!fRg.proyectoId || !fRg.trabajador || !fRg.fecha || regLineas.length === 0) return;
-    // Agrupar en UN SOLO registro con múltiples líneas
+    const newId = uuid();
     const regGrupo = {
       ...fRg,
-      id: `r${Date.now()}`,
+      id: newId,
       estado: "pendiente",
       precioManual: null,
       createdAt: new Date().toISOString(),
       creadoPor: user?.nombre || "",
       esGrupo: true,
       lineasGrupo: regLineas.map(l => ({
+        id: uuid(),
         conceptoId: l.conceptoId,
         cantidad: Number(l.cantidad) || 1,
         observaciones: l.observaciones
       })),
-      // Para compatibilidad: usar primer concepto como conceptoId principal
       conceptoId: regLineas[0]?.conceptoId || "",
       cantidad: 1,
       observaciones: `Grupo: ${regLineas.length} actividades`
@@ -4303,7 +4302,7 @@ function App() {
     if (!fRg.proyectoId || !fRg.conceptoId || !fRg.trabajador || !fRg.fecha) return;
     setRegistros(r => [...r, {
       ...fRg,
-      id: `r${Date.now()}`,
+      id: uuid(),
       cantidad: Number(fRg.cantidad) || 1,
       estado: "pendiente",
       precioManual: null,
@@ -4364,6 +4363,8 @@ function App() {
   } : x));
   const delR = id => {
     if (!window.confirm("¿Eliminar esta actividad? Esta acción no se puede deshacer.")) return;
+    // v3: soft delete en BD
+    dbRegistros.softDelete(id).catch(e => console.error('[NorAcuaV3] delR:', e));
     setDeletedRegIds(s => { const n = new Set(s); n.add(id); return n; });
     setRegistros(r => r.filter(x => x.id !== id));
   };
@@ -4378,7 +4379,7 @@ function App() {
     if (!fCli.nombre || !fCli.nif) return;
     setClientes(c => [...c, {
       ...fCli,
-      id: `cl${Date.now()}`,
+      id: uuid(),
       diasVto: Number(fCli.diasVto),
       ivaDefecto: Number(fCli.ivaDefecto)
     }]);
@@ -4393,12 +4394,15 @@ function App() {
     } : x));
     setMECli(null);
   };
-  const delCli = id => setClientes(c => c.filter(x => x.id !== id));
+  const delCli = id => {
+    dbClientes.softDelete(id).catch(e => console.error('[NorAcuaV3] delCli:', e));
+    setClientes(c => c.filter(x => x.id !== id));
+  };
   const addSerie = () => {
     if (!fSerie.codigo) return;
     setSeries(s => [...s, {
       ...fSerie,
-      id: `s${Date.now()}`,
+      id: uuid(),
       contFact: 0,
       contSupl: 0,
       contAbon: 0,
@@ -4406,13 +4410,13 @@ function App() {
       ultimaFechaSupl: null,
       ultimaFechaAbon: null
     }]);
-    setFSerie({
-      codigo: "",
-      nombre: ""
-    });
+    setFSerie({ codigo: "", nombre: "" });
     setMSerie(false);
   };
-  const delSerie = id => setSeries(s => s.filter(x => x.id !== id));
+  const delSerie = id => {
+    dbSeries.softDelete(id).catch(e => console.error('[NorAcuaV3] delSerie:', e));
+    setSeries(s => s.filter(x => x.id !== id));
+  };
   const addTr = () => {
     if (!fTr.trim()) return;
     setTrabs(t => [...t, fTr.trim()]);
@@ -4422,43 +4426,35 @@ function App() {
   const delTr = n => setTrabs(t => t.filter(x => x !== n));
   const addRs = () => {
     if (!fRs.nombre.trim()) return;
-    setResps(r => [...r, {
-      nombre: fRs.nombre.trim(),
-      sexo: fRs.sexo
-    }]);
-    setFRs({
-      nombre: "",
-      sexo: "M"
-    });
+    setResps(r => [...r, { nombre: fRs.nombre.trim(), sexo: fRs.sexo, id: uuid() }]);
+    setFRs({ nombre: "", sexo: "M" });
     setMResp(false);
   };
-  const delRs = n => setResps(r => r.filter(x => (typeof x === "object" ? x.nombre : x) !== n));
+  const delRs = n => {
+    const r = resps.find(x => (typeof x === "object" ? x.nombre : x) === n);
+    if (r?.id) dbResponsables.softDelete(r.id).catch(e => console.error('[NorAcuaV3] delRs:', e));
+    setResps(r => r.filter(x => (typeof x === "object" ? x.nombre : x) !== n));
+  };
   const cambCl = async () => {
     if (!mClave || !fCl.n || fCl.n !== fCl.c) return;
     const h = await sha256(fCl.n);
+    // v3: actualizar hash en BD
+    const u = usrs[mClave.id];
+    if (u?.id) {
+      await dbUsuarios.updateHash(u.id, h).catch(e => console.error('[NorAcuaV3] cambCl:', e));
+    }
     setUsrs(u => ({
       ...u,
-      [mClave.id]: {
-        ...u[mClave.id],
-        hash: h
-      }
+      [mClave.id]: { ...u[mClave.id], hash: h }
     }));
-    if (mClave.id === "daniel" && keyRef.current) {
-      const nk = await deriveKey(fCl.n);
-      keyRef.current = nk;
-      const e = await aesEnc(nk, concs);
-      await sv(SK.cEnc, e);
-    }
+    // v3: sin AES — conceptos en BD sin cifrado
     setMClave(null);
-    setFCl({
-      n: "",
-      c: ""
-    });
+    setFCl({ n: "", c: "" });
     alert(`Contraseña de ${mClave.nombre} actualizada.`);
   };
   const guardarHist = (html, nom, tipo, proyNombre, periodo, importeTotal, proyectoId, regIds) => {
     const entry = {
-      id: `inf${Date.now()}`,
+      id: uuid(),
       nom,
       tipo,
       proyNombre,
@@ -4470,6 +4466,16 @@ function App() {
       proyectoId,
       regIds: regIds || []
     };
+    // v3: persistir inmediatamente en BD (no esperar al useEffect)
+    dbInformes.upsert({
+      id: entry.id,
+      html: html || '',
+      periodo: periodo || '',
+      po: null,
+      reg_ids: JSON.stringify(regIds || []),
+      creado_en: entry.creadoEn,
+      tipo: tipo || 'actividad'
+    }).catch(e => console.error('[NorAcuaV3] guardarHist:', e));
     setHistorico(prev => [entry, ...prev.slice(0, 99)]);
     return entry;
   };
@@ -4553,7 +4559,7 @@ function App() {
       regs: rs
     }) => {
       if (esMulti) lineas.push({
-        id: `l${Date.now()}${Math.random().toString(36).slice(2)}`,
+        id: uuid(),
         concepto: `${p.nombre}${p.po ? ` — PO: ${p.po}` : ""}${p.estacion ? ` — ES: ${p.estacion}` : ""}`,
         uds: 1,
         precio: 0,
@@ -4569,17 +4575,17 @@ function App() {
             const c = concs.find(x => x.id === l.conceptoId);
             const cant = (l.certifAprobada && l.cantCertif != null) ? l.cantCertif : (l.cantidad || 1);
             const pu = l.precioManual != null ? l.precioManual : c?.p?.[p.zona] ?? 0;
-            lineas.push({ id: `l${Date.now()}${Math.random().toString(36).slice(2)}`, concepto: `${c?.nombre || "—"}${!esMulti && p.po ? ` — PO: ${p.po}` : ""}${p.estacion ? ` — ${p.estacion}` : ""} (${fmtD(r.fecha)})`, uds: cant, precio: pu, descuento: Number(l.descuento) || 0, iva: ivaDefecto });
+            lineas.push({ id: uuid(), concepto: `${c?.nombre || "—"}${!esMulti && p.po ? ` — PO: ${p.po}` : ""}${p.estacion ? ` — ${p.estacion}` : ""} (${fmtD(r.fecha)})`, uds: cant, precio: pu, descuento: Number(l.descuento) || 0, iva: ivaDefecto });
           });
         } else {
           const c = gC(r.conceptoId);
           const pu = r.precioManual != null ? r.precioManual : c?.p?.[p.zona] ?? 0;
-          lineas.push({ id: `l${Date.now()}${Math.random().toString(36).slice(2)}`, concepto: `${c?.nombre || "—"}${!esMulti && p.po ? ` — PO: ${p.po}` : ""}${p.estacion ? ` — ${p.estacion}` : ""} (${fmtD(r.fecha)})`, uds: r.cantidad || 1, precio: pu, descuento: Number(r.descuento) || 0, iva: ivaDefecto });
+          lineas.push({ id: uuid(), concepto: `${c?.nombre || "—"}${!esMulti && p.po ? ` — PO: ${p.po}` : ""}${p.estacion ? ` — ${p.estacion}` : ""} (${fmtD(r.fecha)})`, uds: r.cantidad || 1, precio: pu, descuento: Number(r.descuento) || 0, iva: ivaDefecto });
         }
       });
     });
     if (!lineas.length) lineas.push({
-      id: `l${Date.now()}`,
+      id: uuid(),
       concepto: `Trabajos ${inf.proyNombre} — ${inf.periodo}`,
       uds: 1,
       precio: inf.importeTotal || 0,
@@ -4697,48 +4703,32 @@ function App() {
     if (editMode === "new") {
       setSeries(incCont(series, editDoc.serieId, editDoc.tipo, editDoc.fecha));
       const { _regIds, _histId, ...cleanDoc } = editDoc;
-      setFacturas(f => [{
-        ...cleanDoc,
-        id: `f${Date.now()}`,
-        creadoEn: new Date().toISOString()
-      }, ...f]);
+      const newFactId = uuid();
+      const newFact = { ...cleanDoc, id: newFactId, creadoEn: new Date().toISOString() };
+      setFacturas(f => [newFact, ...f]);
       if (_regIds && _regIds.length > 0) {
         const factNum = editDoc.numero || "—";
+        // v3: actualizar factura_id en na_registros directamente
+        _regIds.forEach(rid => {
+          dbRegistros.patch(rid, { factura_id: newFactId, factura_numero: factNum })
+            .catch(e => console.error('[NorAcuaV3] link reg→factura:', e));
+        });
         setRegistros(regs => regs.map(r =>
-          _regIds.includes(r.id) ? { ...r, facturado: true, facturaRef: factNum } : r
+          _regIds.includes(r.id) ? { ...r, facturado: true, facturaId: newFactId, facturaRef: factNum } : r
         ));
       }
-      // Marcar informe como facturado y asociar número de factura
       if (_histId) {
         const factNum = editDoc.numero || "—";
         setHistorico(h => h.map(x => x.id === _histId ? { ...x, estado: "facturado", facturaRef: factNum } : x));
-        // Actualizar estado dorado en Supabase: protección permanente contra sesiones caducadas
-        (async () => {
-          try {
-            const prev = await ld("na-v21-golden-state", {});
-            const newFact = { ...(prev.facturadoIds || {}) };
-            (_regIds || []).forEach(id => { newFact[id] = factNum; });
-            const inf = historico.find(x => x.id === _histId);
-            const golden = {
-              ...prev,
-              facturadoIds: newFact,
-              facturadoHist: inf ? { ...inf, estado: "facturado", facturaRef: factNum } : prev.facturadoHist,
-              deletedHistIds: [...new Set([...(prev.deletedHistIds || []), ...[...deletedHistIds]])],
-              deletedRegIds: [...deletedRegIds],
-              updatedAt: new Date().toISOString()
-            };
-            await sv("na-v21-golden-state", golden);
-          } catch(e) { console.warn('[NorAcua] golden state update failed', e); }
-        })();
+        // v3: no hay golden state — la FK factura_id es la fuente de verdad
       }
-      // Marcar también las actividades vinculadas por ofertaCodigo
       if (cleanDoc.ofertaRef || cleanDoc.observaciones?.startsWith("Ref. oferta:")) {
         const factNum2 = editDoc.numero || "—";
         const ofertaCode = cleanDoc.ofertaRef || "";
         if (ofertaCode) {
           setRegistros(regs => regs.map(r =>
             (r.ofertaCodigo === ofertaCode || (r.ofertaCodigos || []).includes(ofertaCode)) && !r.facturado
-              ? { ...r, facturado: true, facturaRef: factNum2, estadoCertif: "finalizado" } : r
+              ? { ...r, facturado: true, facturaId: newFactId, facturaRef: factNum2, estadoCertif: "finalizado" } : r
           ));
         }
       }
@@ -4754,33 +4744,25 @@ function App() {
     if (e === "Enviada" && doc) {
       try {
         const cl = gCL(doc.clienteId);
-        const {
-          total
-        } = calcDocTotal(doc);
+        const { total } = calcDocTotal(doc);
         const para = cl?.emailFact || "";
-        const asunto = `${doc.tipo} ${doc.numero} — NorAcua`; // FIX #14: PO en email
+        const asunto = `${doc.tipo} ${doc.numero} — NorAcua`;
         const poLine = doc.poRef ? `\nPO / Nº de pedido: ${doc.poRef}` : "";
         const cuerpo = `Estimados/as,\n\nAdjuntamos ${doc.tipo.toLowerCase()} número ${doc.numero} con fecha ${fmtD(doc.fecha)} por importe de ${fmtE(total)} (IVA incluido).${poLine}\n\nVencimiento: ${fmtD(doc.fechaVto)}\nMétodo de pago: ${doc.metodoPago || ""}\nCuenta: ${doc.iban || ""}\n\nAtentamente,\n${EMPRESA.nombre}\n${EMPRESA.email}`;
-        setMMailto({
-          para,
-          asunto,
-          cuerpo
-        });
-      } catch (err) {
-        console.error(err);
-      }
+        setMMailto({ para, asunto, cuerpo });
+      } catch (err) { console.error(err); }
     }
-    setFacturas(f => f.map(x => x.id === id ? {
-      ...x,
-      estado: e
-    } : x));
+    setFacturas(f => f.map(x => x.id === id ? { ...x, estado: e } : x));
   };
-  const eliminarF = id => setFacturas(f => f.filter(x => x.id !== id));
+  const eliminarF = id => {
+    dbFacturas.softDelete(id).catch(e => console.error('[NorAcuaV3] eliminarF:', e));
+    setFacturas(f => f.filter(x => x.id !== id));
+  };
 
   // FIX #8: técnicos van siempre al editor (no tab "proponer oferta")
   const nuevaOferta = () => {
     if (!user) return;
-    const num = isAdmin ? genNumOferta(cfgOfertas) : "PROP-" + Date.now().toString().slice(-5);
+    const num = isAdmin ? genNumOferta(cfgOfertas) : "PROP-" + uuid().slice(0,8);
     setEditOferta({
       id: null,
       numero: num,
@@ -4831,7 +4813,7 @@ function App() {
     };
     const esAdmin = isAdmin;
     if (editOfertaMode === "new") {
-      const id = `o${Date.now()}`;
+      const id = uuid();
       if (esAdmin) setCfgOfertas(c => ({
         ...c,
         contadorActual: (c.contadorActual || 0) + 1
@@ -4887,7 +4869,7 @@ function App() {
     setEditOferta(d => ({
       ...d,
       lineas: [...d.lineas, {
-        id: `lo${Date.now()}`,
+        id: uuid(),
         conceptoId: cId,
         cantidad: 1,
         precioUnit: pu,
@@ -4951,7 +4933,7 @@ function App() {
     const lineas = (oferta.lineas || []).map(l => {
       const c = concs.find(x => x.id === l.conceptoId);
       return {
-        id: `l${Date.now()}${Math.random().toString(36).slice(2)}`,
+        id: uuid(),
         concepto: `${c?.id || ""} — ${c?.nombre || l.conceptoId}`,
         uds: l.cantidad || 1,
         precio: l.precioUnit || 0,
@@ -5007,7 +4989,7 @@ function App() {
     if (!fNuevoPrOfer.nombre || !fNuevoPrOfer.zona) return;
     const newP = {
       ...fNuevoPrOfer,
-      id: `p${Date.now()}`,
+      id: uuid(),
       creadoEn: new Date().toISOString(),
       creadoPor: user?.nombre || "admin"
     };
@@ -6328,7 +6310,7 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
             hasPend&&/*#__PURE__*/React.createElement("button",{onClick:function(e){e.stopPropagation();setRegistros(function(rs){return rs.map(function(x){return regs.find(function(r){return r.id===x.id;})&&x.estado==="pendiente"?Object.assign({},x,{estado:"rechazado"}):x;});});},style:{fontSize:10,background:"#dc2626",border:"none",color:"#fff",borderRadius:5,padding:"2px 7px",cursor:"pointer",fontWeight:700}},"\u2715 Rechazar todo"),
             hasAprobSinCertif&&/*#__PURE__*/React.createElement("button",{onClick:function(e){e.stopPropagation();setRegistros(function(rs){return rs.map(function(x){if(!regs.find(function(r){return r.id===x.id;})||x.estado!=="aprobado")return x;if(x.esGrupo)return Object.assign({},x,{estadoCertif:"finalizado",lineasGrupo:(x.lineasGrupo||[]).map(function(l){return Object.assign({},l,{certifAprobada:true,certifEnviada:true,cantCertif:l.cantCertif??l.cantidad});})});return Object.assign({},x,{estadoCertif:"finalizado"});});});},style:{fontSize:10,background:"#1c3e5e",border:"none",color:"#fff",borderRadius:5,padding:"2px 7px",cursor:"pointer",fontWeight:700}},"\uD83D\uDCCB Certif. todo"),
             hasCertifPend&&/*#__PURE__*/React.createElement("button",{onClick:function(e){e.stopPropagation();setRegistros(function(rs){return rs.map(function(x){if(!regs.find(function(r){return r.id===x.id;}))return x;if(x.esGrupo){var nls=(x.lineasGrupo||[]).map(function(l){return l.certifEnviada&&!l.certifAprobada?Object.assign({},l,{certifAprobada:true,certifEnviada:false}):l;});return Object.assign({},x,{lineasGrupo:nls,estadoCertif:nls.every(function(l){return l.certifAprobada;})?"finalizado":x.estadoCertif});}return x.certifEnviada&&!x.estadoCertif?Object.assign({},x,{estadoCertif:"finalizado",certifEnviada:false}):x;});});},style:{fontSize:10,background:"#059669",border:"none",color:"#fff",borderRadius:5,padding:"2px 7px",cursor:"pointer",fontWeight:700}},"\u2713 Validar todas"),
-            ofertaDisponible&&/*#__PURE__*/React.createElement("button",{onClick:function(e){e.stopPropagation();var lns=[];regs.filter(function(r){return !r.ofertaCodigo&&!(r.ofertaCodigos&&r.ofertaCodigos.length>0)&&r.estado!=="certif_oferta"&&r.estado!=="rechazado";}).forEach(function(rx){if(rx.esGrupo&&rx.lineasGrupo){rx.lineasGrupo.forEach(function(l){var pu3=l.precioManual!=null?l.precioManual:(gC(l.conceptoId)?.p?.[proy?.zona]??0);var lo={id:"lo"+Date.now()+Math.random().toString(36).slice(2),conceptoId:l.conceptoId,cantidad:l.cantCertif??l.cantidad??1,precioUnit:pu3,descuento:Number(l.descuento)||0,total:0,comentario:l.observaciones||""};lo.total=calcOfertaLinea(lo);lns.push(lo);});}else{var cx=gC(rx.conceptoId);var pu4=rx.precioManual!=null?rx.precioManual:(cx?.p?.[proy?.zona]??0);var lo2={id:"lo"+Date.now()+Math.random().toString(36).slice(2),conceptoId:rx.conceptoId,cantidad:rx.cantidad??1,precioUnit:pu4,descuento:0,total:pu4*(rx.cantidad??1),comentario:rx.descripcion||""};lo2.total=calcOfertaLinea(lo2);lns.push(lo2);}});var _nOf=genNumOferta(cfgOfertas);setEditOferta({id:null,numero:_nOf,clienteId:proy?.clienteId||"",proyectoId:regs[0].proyectoId,zona:proy?.zona||"",po:proy?.po||"",asunto:"Oferta "+(proy?.nombre||proy?.po||""),nombre:"Oferta "+(proy?.nombre||proy?.po||""),estado:"Borrador",version:1,lineas:lns,firmante:"",firmanteCliente:"",firmanteNorAcua:"D. Daniel Romero",formaPago:"Seg\xFAn contrato",fecha:today(),creadoEn:new Date().toISOString()});setEditOfertaMode("new");setModulo("ofertas");setViewO("editor");},style:{fontSize:10,background:"#7c3aed",border:"none",color:"#fff",borderRadius:5,padding:"2px 7px",cursor:"pointer",fontWeight:700}},"\uD83D\uDCC4 Oferta"),
+            ofertaDisponible&&/*#__PURE__*/React.createElement("button",{onClick:function(e){e.stopPropagation();var lns=[];regs.filter(function(r){return !r.ofertaCodigo&&!(r.ofertaCodigos&&r.ofertaCodigos.length>0)&&r.estado!=="certif_oferta"&&r.estado!=="rechazado";}).forEach(function(rx){if(rx.esGrupo&&rx.lineasGrupo){rx.lineasGrupo.forEach(function(l){var pu3=l.precioManual!=null?l.precioManual:(gC(l.conceptoId)?.p?.[proy?.zona]??0);var lo={id:uuid(),conceptoId:l.conceptoId,cantidad:l.cantCertif??l.cantidad??1,precioUnit:pu3,descuento:Number(l.descuento)||0,total:0,comentario:l.observaciones||""};lo.total=calcOfertaLinea(lo);lns.push(lo);});}else{var cx=gC(rx.conceptoId);var pu4=rx.precioManual!=null?rx.precioManual:(cx?.p?.[proy?.zona]??0);var lo2={id:uuid(),conceptoId:rx.conceptoId,cantidad:rx.cantidad??1,precioUnit:pu4,descuento:0,total:pu4*(rx.cantidad??1),comentario:rx.descripcion||""};lo2.total=calcOfertaLinea(lo2);lns.push(lo2);}});var _nOf=genNumOferta(cfgOfertas);setEditOferta({id:null,numero:_nOf,clienteId:proy?.clienteId||"",proyectoId:regs[0].proyectoId,zona:proy?.zona||"",po:proy?.po||"",asunto:"Oferta "+(proy?.nombre||proy?.po||""),nombre:"Oferta "+(proy?.nombre||proy?.po||""),estado:"Borrador",version:1,lineas:lns,firmante:"",firmanteCliente:"",firmanteNorAcua:"D. Daniel Romero",formaPago:"Seg\xFAn contrato",fecha:today(),creadoEn:new Date().toISOString()});setEditOfertaMode("new");setModulo("ofertas");setViewO("editor");},style:{fontSize:10,background:"#7c3aed",border:"none",color:"#fff",borderRadius:5,padding:"2px 7px",cursor:"pointer",fontWeight:700}},"\uD83D\uDCC4 Oferta"),
             /*#__PURE__*/React.createElement("button",{onClick:function(e){e.stopPropagation();setAssigningOfertaGk(isAssigning?null:gk);setAssigningOfertaSel(groupOfertaCodigos.slice());},style:{fontSize:10,background:isAssigning?"#5c4a99":"rgba(255,255,255,0.2)",border:"1px solid rgba(255,255,255,0.3)",color:"#fff",borderRadius:5,padding:"2px 7px",cursor:"pointer",fontWeight:700}},"\uD83D\uDD17 Asignar oferta(s)"),
             (regs.some(function(r){return r.estado==="aprobado"||r.estadoCertif==="finalizado";}))&&/*#__PURE__*/React.createElement("button",{onClick:function(e){e.stopPropagation();setRegistros(function(rs){return rs.map(function(x){if(!regs.find(function(r){return r.id===x.id;}))return x;return Object.assign({},x,{estado:"pendiente",estadoCertif:null,certifEnviada:false,lineasGrupo:(x.lineasGrupo||[]).map(function(l){return Object.assign({},l,{certifAprobada:false,certifEnviada:false});})});});});},style:{fontSize:10,background:"rgba(255,255,255,0.15)",border:"none",color:"#fff",borderRadius:5,padding:"2px 7px",cursor:"pointer"}},"\u21A9 Pendiente"),
             groupOfertaCodigos.length>0&&/*#__PURE__*/React.createElement("button",{onClick:function(e){e.stopPropagation();setRegistros(function(rs){return rs.map(function(x){if(!regs.find(function(r){return r.id===x.id;})||x.facturado)return x;return Object.assign({},x,{ofertaCodigo:"",ofertaCodigos:[],estado:x.estado==="certif_oferta"?"pendiente":x.estado,certifOfertaAt:null,lineasGrupo:(x.lineasGrupo||[]).map(function(l){return Object.assign({},l,{certifOferta:false,_ofertaCheck:false,certifOfertaAt:null});})});});});setAssigningOfertaGk(null);},style:{fontSize:10,background:"#dc2626",border:"none",color:"#fff",borderRadius:5,padding:"2px 7px",cursor:"pointer",fontWeight:700}},'🗑 Quitar oferta'),
@@ -6563,14 +6545,10 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
                         onClick: e => {
                           e.stopPropagation();
                           if (window.confirm("¿Eliminar esta actividad rechazada? Esta acción no se puede deshacer.")) {
+                            // v3: soft delete en BD
+                            dbRegistros.softDelete(r.id).catch(err => console.error('[NorAcuaV3] del reg certif:', err));
                             setRegistros(rs => rs.filter(x => x.id !== r.id));
                             setDeletedRegIds(prev => new Set([...prev, r.id]));
-                            // Persistir en estado dorado
-                            (async () => { try {
-                              const prev = await ld("na-v21-golden-state", {});
-                              const dr = [...new Set([...(prev.deletedRegIds||[]), r.id])];
-                              await sv("na-v21-golden-state", {...prev, deletedRegIds: dr, updatedAt: new Date().toISOString()});
-                            } catch(e){} })();
                           }
                         },
                         style: { fontSize: 11, background: "#dc2626", border: "none", color: "#fff", borderRadius: 5, padding: "2px 8px", cursor: "pointer", fontWeight: 700 }
@@ -6901,14 +6879,10 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
     sm: true,
     variant: "ghost",
     onClick: () => {
+          // v3: soft delete en BD
+          dbInformes.softDelete(inf.id).catch(e => console.error('[NorAcuaV3] del informe:', e));
           setHistorico(h => h.filter(x => x.id !== inf.id));
           setDeletedHistIds(prev => new Set([...prev, inf.id]));
-          // Persistir en estado dorado
-          (async () => { try {
-            const prev = await ld("na-v21-golden-state", {});
-            const dh = [...new Set([...(prev.deletedHistIds||[]), inf.id])];
-            await sv("na-v21-golden-state", {...prev, deletedHistIds: dh, updatedAt: new Date().toISOString()});
-          } catch(e){} })();
         },
     style: {
       color: C.danger
@@ -6980,19 +6954,20 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
           if (token === null) return;
           if (token.trim()) {
             localStorage.setItem('na_gh_token', token.trim());
-            // Test inmediato
-            const bkKeys = ['na-v20-proyectos','na-v20-registros','na-v21-facturas','na-v21-ofertas','na-v20-clientes'];
-            const testData = {};
-            for (const k of bkKeys) {
-              const rv = await window.storage.get(k).catch(()=>null);
-              if (rv?.value) { try { testData[k] = JSON.parse(rv.value); } catch { testData[k] = rv.value; } }
-            }
-            const r = await ghPush(testData);
+            // Test inmediato con datos reales de BD v3
+            try {
+              const [pR, rR, fR, oR, cR] = await Promise.all([
+                dbProyectos.getAll(), dbRegistros.getAll(), dbFacturas.getAll(),
+                dbOfertas.getAll(), dbClientes.getAll()
+              ]);
+              const testData = { proyectos: pR||[], registros: rR||[], facturas: fR||[], ofertas: oR||[], clientes: cR||[] };
+              const r = await ghPush(testData);
             if (r.ok) {
               alert('✅ Token guardado y backup de prueba en GitHub OK\n\nRuta: github.com/noracua-ia/NA-Backup/blob/main/data/noracua-latest.json');
             } else {
               alert('⚠️ Token guardado pero el backup falló:\n' + r.msg + '\n\nVerifica que el repo noracua-ia/NA-Backup existe y es privado.');
             }
+            } catch(e) { alert('⚠️ Error al hacer backup de prueba: ' + e.message); }
           } else {
             localStorage.removeItem('na_gh_token');
             alert('Token eliminado. Los backups no se enviarán a GitHub.');
@@ -7029,15 +7004,14 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
       /*#__PURE__*/React.createElement(Btn, {
         sm: true, variant: "ghost",
         onClick: async () => {
-          const keys = ['na-v20-proyectos','na-v20-registros','na-v21-facturas','na-v21-ofertas',
-            'na-v20-clientes','na-v20-trabajadores','na-v20-responsables','na-v20-estaciones',
-            'na-v20-series','na-v20-historico','na-v21-cfg-ofertas'];
-          const bk = { fecha: new Date().toISOString(), datos: {} };
-          for (const k of keys) {
-            const r = await window.storage.get(k).catch(()=>null);
-            if (r?.value) { try { bk.datos[k] = JSON.parse(r.value); } catch { bk.datos[k] = r.value; } }
-          }
-          await saveBackupFile(bk.datos);
+          try {
+            const [pR, rR, fR, oR, cR, hR] = await Promise.all([
+              dbProyectos.getAll(), dbRegistros.getAll(), dbFacturas.getAll(),
+              dbOfertas.getAll(), dbClientes.getAll(), dbHsse.getAll()
+            ]);
+            const bkData = { proyectos: pR||[], registros: rR||[], facturas: fR||[], ofertas: oR||[], clientes: cR||[], hsse: hR||[] };
+            await saveBackupFile(bkData);
+          } catch(e) { console.error('[NorAcuaV3] manual backup:', e); }
         }
       }, "⬇ Backup ahora"),
       /*#__PURE__*/React.createElement("span", { style: { fontSize: 10, color: C.muted, alignSelf: "center" } },
@@ -9406,7 +9380,10 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
       sm: true,
       variant: "ghost",
       onClick: () => {
-        if (window.confirm("¿Eliminar?")) setOfertas(ofs => ofs.filter(x => x.id !== o.id));
+        if (window.confirm("¿Eliminar?")) {
+          dbOfertas.softDelete(o.id).catch(e => console.error('[NorAcuaV3] del oferta:', e));
+          setOfertas(ofs => ofs.filter(x => x.id !== o.id));
+        }
       },
       style: {
         color: C.danger
@@ -11027,7 +11004,7 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
     onClick: () => setMEReg(r => ({
       ...r,
       lineasGrupo: [...(r.lineasGrupo || []), {
-        id: "lg_" + Date.now(),
+        id: uuid(),
         conceptoId: "",
         cantidad: 1,
         observaciones: "",
@@ -11999,7 +11976,7 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
                         React.createElement("div",{style:{display:"flex",gap:4}},
                           React.createElement("button",{onClick:function(){setMHsseEdit(Object.assign({},s));},style:{background:"transparent",border:"1px solid #dde2e8",borderRadius:5,padding:"3px 8px",cursor:"pointer",fontSize:11}},"✎ Editar"),
                           s.estado!=="anulado"&&React.createElement("button",{onClick:function(){if(window.confirm("¿Anular esta supervisión?"))setHsseSups(function(p){return p.map(function(x){return x.id===s.id?Object.assign({},x,{estado:"anulado"}):x;});});},style:{background:"transparent",border:"1px solid #d03030",borderRadius:5,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#d03030"}},"Anular"),
-                          s.estado==="anulado"&&React.createElement("button",{onClick:function(){if(window.confirm("¿Eliminar?"))setHsseSups(function(p){return p.filter(function(x){return x.id!==s.id;});});},style:{background:"transparent",border:"1px solid #d03030",borderRadius:5,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#d03030"}},"🗑")
+                          s.estado==="anulado"&&React.createElement("button",{onClick:function(){if(window.confirm("¿Eliminar?")){dbHsse.softDelete(s.id).catch(function(e){console.error('[NorAcuaV3] del hsse:',e);});setHsseSups(function(p){return p.filter(function(x){return x.id!==s.id;});});}},style:{background:"transparent",border:"1px solid #d03030",borderRadius:5,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#d03030"}},"🗑")
                         )
                       )
                     )
@@ -12217,7 +12194,7 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
                     observaciones:"Ref. informe HSSE aprobado: "+inf.nom+(po?" — PO: "+po:""),
                     refAbono:"",
                     lineas:[{
-                      id:"l"+Date.now(),
+                      id:uuid(),
                       concepto:concepto,
                       uds:inf.totalHoras||1,
                       precio:precio,
@@ -12254,7 +12231,7 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
                   var _cfg=hsseCfg;
                   var _totalH=_sups.reduce(function(a,s){return a+Number(s.horasAdmin||s.horas||0);},0);
                   var _totalE=_sups.reduce(function(a,s){var p=_cfg.preciosPorZona&&_cfg.preciosPorZona[s.zona]?_cfg.preciosPorZona[s.zona]:0;return a+Number(s.horasAdmin||s.horas||0)*p;},0);
-                  var entry={id:"hinf_"+Date.now(),nom:nomFinal,html:mHssePrev.html,desde:mHssePrev.desde,hasta:mHssePrev.hasta,po:mHssePrev.po||"",periodo:fmtD(mHssePrev.desde)+"→"+fmtD(mHssePrev.hasta),numSups:_sups.length,totalHoras:_totalH,totalImporte:_totalE,supIds:_sups.map(function(s){return s.id;}),facturado:false,creadoEn:new Date().toISOString()};
+                  var entry={id:uuid(),nom:nomFinal,html:mHssePrev.html,desde:mHssePrev.desde,hasta:mHssePrev.hasta,po:mHssePrev.po||"",periodo:fmtD(mHssePrev.desde)+"→"+fmtD(mHssePrev.hasta),numSups:_sups.length,totalHoras:_totalH,totalImporte:_totalE,supIds:_sups.map(function(s){return s.id;}),facturado:false,creadoEn:new Date().toISOString()};
                   setHsseHist(function(p){return [entry].concat(p.slice(0,49));});
                   setHsseInfCounter(function(n){return n+1;});
                   setMHssePrev(null);
@@ -12435,7 +12412,7 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
               setHsseSups(function(p){return p.map(function(x){return x.id===editId?saveData:x;});});
               setMHsseEdit(null);
             } else {
-              setHsseSups(function(p){return [{site:site,tipoActividad:data.tipoActividad||"",pctAuditoria:data.pctAuditoria||"",obraConSupervision:data.obraConSupervision||"",fecha:data.fecha,horas:data.horas,horasOrig:data.horas,horasAdmin:data.horas,supervisor:data.supervisor||"",encargo:data.encargo||"",zona:data.zona||"",incidencias:data.incidencias||"No",motivoSupervision:data.motivoSupervision||"",empresa:data.empresa||"",comentarios:data.comentarios||"",id:"hs_"+Date.now(),estado:"pendiente",creadoPor:"admin",fechaCreacion:new Date().toISOString()}].concat(p);});
+              setHsseSups(function(p){return [{site:site,tipoActividad:data.tipoActividad||"",pctAuditoria:data.pctAuditoria||"",obraConSupervision:data.obraConSupervision||"",fecha:data.fecha,horas:data.horas,horasOrig:data.horas,horasAdmin:data.horas,supervisor:data.supervisor||"",encargo:data.encargo||"",zona:data.zona||"",incidencias:data.incidencias||"No",motivoSupervision:data.motivoSupervision||"",empresa:data.empresa||"",comentarios:data.comentarios||"",id:uuid(),estado:"pendiente",creadoPor:"admin",fechaCreacion:new Date().toISOString()}].concat(p);});
               setFHs({site:"",tipoActividad:"",pctAuditoria:"",obraConSupervision:"",fecha:today(),horas:"",supervisor:"",encargo:"",zona:"",incidencias:"No",motivoSupervision:"",empresa:"",comentarios:""});
               setMHsseReg(false);
             }
