@@ -222,13 +222,16 @@ function _rowToFact(row) {
 
 // Convierte fila v3 de na_ofertas al formato interno React
 function _rowToOferta(row) {
-  // na_ofertas almacena datos extra en metadatos (jsonb)
+  // na_ofertas: metadatos puede ser null en datos migrados
   const m = (row.metadatos && typeof row.metadatos === 'object') ? row.metadatos : {};
+  // Mapear estados reales de BD a estados esperados por la UI
+  const estadoMap = { 'activa': 'Enviada', 'cerrada': 'Aceptada', 'cancelada': 'Rechazada', 'borrador': 'Borrador' };
+  const estado = estadoMap[row.estado] || row.estado || 'Borrador';
   return {
     id: row.id,
     numero: row.codigo || m.numero || '',
     asunto: row.asunto || '',
-    estado: row.estado || 'Borrador',
+    estado: estado,
     fecha: m.fecha || row.creado_en?.slice(0,10) || '',
     clienteId: row.cliente_id || '',
     estacion: m.estacion || '',
@@ -246,18 +249,21 @@ function _rowToOferta(row) {
 
 // Convierte fila v3 de na_hsse_supervisiones al formato interno React
 function _rowToHsse(row) {
-  // Extended fields are in datos_supervision jsonb
+  // Extended fields in datos_supervision — keys come from migrated data
+  // Real keys observed: site, tipo, empresa, encargo, importe, comentarios, incidencias,
+  //                     pctAuditoria, motivoSupervision, obraConSupervision
   const d = (row.datos_supervision && typeof row.datos_supervision === 'object') ? row.datos_supervision : {};
-  const horas = d.horas != null ? d.horas : (row.horas_facturables != null ? String(row.horas_facturables) : '');
+  const horas = row.horas_facturables != null ? String(row.horas_facturables) : '';
+  const estadoMap = { 'aprobada': 'aprobado', 'completada': 'anulado', 'pendiente': 'pendiente' };
   return {
     id: row.id,
     site: d.site || '',
-    tipoActividad: d.tipoActividad || row.tipo || '',
+    tipoActividad: d.tipo || d.tipoActividad || row.tipo || '',
     pctAuditoria: d.pctAuditoria != null ? String(d.pctAuditoria) : '',
     obraConSupervision: d.obraConSupervision != null ? String(d.obraConSupervision) : '',
     fecha: row.fecha,
-    horas: horas !== '' ? String(horas) : '',
-    horasAdmin: d.horasAdmin != null ? d.horasAdmin : (row.horas_facturables != null ? row.horas_facturables : null),
+    horas: horas,
+    horasAdmin: row.horas_facturables != null ? row.horas_facturables : null,
     supervisor: d.supervisor || '',
     encargo: d.encargo || '',
     zona: row.zona || '',
@@ -266,7 +272,7 @@ function _rowToHsse(row) {
     empresa: d.empresa || '',
     comentarios: d.comentarios || '',
     importe: d.importe != null ? d.importe : null,
-    estado: row.estado === 'aprobada' ? 'aprobado' : (row.estado === 'completada' ? 'anulado' : row.estado || 'pendiente'),
+    estado: estadoMap[row.estado] || row.estado || 'pendiente',
     facturaId: d.facturaId || null,
     createdAt: row.creado_en || row.fecha
   };
