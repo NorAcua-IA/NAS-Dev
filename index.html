@@ -110,9 +110,10 @@ const dbOfertas = {
   softDelete: id => _sb('/rest/v1/na_ofertas?id=eq.' + id, { method: 'PATCH', body: JSON.stringify({ eliminado_en: new Date().toISOString() }) })
 };
 
-// Informes (histórico)
+// Informes (histórico actividad + HSSE)
 const dbInformes = {
   getAll: () => _sb('/rest/v1/na_informes?eliminado_en=is.null&order=creado_en.desc&limit=500'),
+  getByTipo: tipo => _sb('/rest/v1/na_informes?eliminado_en=is.null&tipo=eq.' + tipo + '&order=creado_en.desc&limit=500'),
   upsert: row => _sb('/rest/v1/na_informes', { method: 'POST', body: JSON.stringify(row), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } }),
   softDelete: id => _sb('/rest/v1/na_informes?id=eq.' + id, { method: 'PATCH', body: JSON.stringify({ eliminado_en: new Date().toISOString() }) })
 };
@@ -283,14 +284,23 @@ function _hsseToRow(sup) {
 }
 
 // Convierte fila v3 de na_informes al formato interno React
+// La columna `po` almacena JSON con metadatos extras que la tabla no tiene como columnas
 function _rowToInforme(row) {
+  let meta = {};
+  try { if (row.po && row.po.startsWith('{')) meta = JSON.parse(row.po); } catch {}
   return {
     id: row.id,
     html: row.html || '',
-    periodo: row.periodo || '',
-    po: row.po || '',
-    regIds: Array.isArray(row.reg_ids) ? row.reg_ids : (row.reg_ids ? JSON.parse(row.reg_ids) : []),
-    createdAt: row.creado_en,
+    periodo: meta.periodo || row.periodo || '',
+    po: meta.po || '',
+    nom: meta.nom || row.periodo || row.id,
+    proyNombre: meta.proyNombre || '',
+    proyectoId: meta.proyectoId || null,
+    importeTotal: meta.importeTotal || null,
+    estado: meta.estado || 'borrador',
+    facturaRef: meta.facturaRef || null,
+    regIds: (() => { try { return JSON.parse(row.reg_ids || '[]'); } catch { return []; } })(),
+    creadoEn: row.creado_en,
     tipo: row.tipo || 'actividad'
   };
 }
@@ -652,43 +662,28 @@ async function autoBackup(datos) {
   try {
     const fecha = new Date();
     const bkKey = 'na-backup-' + fecha.toISOString().slice(0,13).replace(/[^0-9]/g,'');
-    // FIX v2.7.1: Strip HTML from historico entries — reduce tamaño backup (~60-80% menos)
-    // Los regIds/supIds permiten regenerar los informes. El HTML sigue disponible en Supabase.
-    const datosCompactos = {...datos};
-    if (Array.isArray(datosCompactos['na-v20-historico'])) {
-      datosCompactos['na-v20-historico'] = datosCompactos['na-v20-historico'].map(e => {
-        const {html: _h, ...rest} = e; return {...rest, _htmlStripped: true};
+    // v3: datos = {proyectos, registros, facturas, ofertas, clientes, hsse}
+    // Compact: strip HTML from informes if present
+    const datosCompactos = { ...datos };
+    if (Array.isArray(datosCompactos.historico)) {
+      datosCompactos.historico = datosCompactos.historico.map(e => {
+        const { html: _h, ...rest } = e; return { ...rest, _htmlStripped: true };
       });
     }
-    if (datosCompactos['na-v25-hsse-cfg'] && Array.isArray(datosCompactos['na-v25-hsse-cfg'].hist)) {
-      datosCompactos['na-v25-hsse-cfg'] = {
-        ...datosCompactos['na-v25-hsse-cfg'],
-        hist: datosCompactos['na-v25-hsse-cfg'].hist.map(e => { const {html:_h,...rest}=e; return {...rest,_htmlStripped:true}; })
-      };
-    }
-    // Strip HTML from hsseHist (separate key)
-    if (Array.isArray(datosCompactos['na-v25-hsse-hist'])) {
-      datosCompactos['na-v25-hsse-hist'] = datosCompactos['na-v25-hsse-hist'].map(e => { const {html:_h,...rest}=e; return {...rest,_htmlStripped:true}; });
-    }
-    const snapshot = JSON.stringify({ fecha: fecha.toISOString(), datos: datosCompactos });
-    const SB_URL_BK = "https://lhmawivuxgekxleqvqle.supabase.co";
-    const SB_KEY_BK = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxobWF3aXZ1eGdla3hsZXF2cWxlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2MTY1NTYsImV4cCI6MjA5NDE5MjU1Nn0.frbxipEXiMfxsiRjo9rilHDiXoc3BqYGxOh-Qgq0VhU";
-    await fetch(SB_URL_BK + '/rest/v1/na_cfg_ofertas', { method: 'POST',
-      body: JSON.stringify([{ id: bkKey, data: snapshot, updated_at: fecha.toISOString() }]),
-      headers: { 'apikey': SB_KEY_BK, 'Authorization': 'Bearer ' + SB_KEY_BK,
-        'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates,return=minimal' }
-    });
+    const snapshot = JSON.stringify({ fecha: fecha.toISOString(), version: APP_VERSION, datos: datosCompactos });
+    // Guardar en localStorage (rolling últimos BACKUP_MAX_FILES)
     localStorage.setItem('na_autobk_' + bkKey, snapshot);
     localStorage.setItem('na_autobk_last', fecha.toISOString());
-    // Mantener últimos 10 en localStorage
     Object.keys(localStorage).filter(k => k.startsWith('na_autobk_na-backup-')).sort().reverse().slice(BACKUP_MAX_FILES).forEach(k => localStorage.removeItem(k));
-    // Guardar en GitHub (redundancia) y en carpeta local
+    // Guardar en GitHub
     const _ghR = await ghPush(datosCompactos);
-    if (!_ghR.ok) console.warn('[NorAcua] GitHub backup:', _ghR.msg);
+    if (!_ghR.ok) console.warn('[NorAcuaV3] GitHub backup:', _ghR.msg);
     else localStorage.setItem('na_gh_last', new Date().toISOString());
-    await saveBackupFile(datosCompactos, true); // autoMode: no descarga si no hay carpeta configurada
-  } catch(e) { console.warn('[NorAcua] autoBackup error:', e.message); }
+    // Guardar en carpeta local si está configurada
+    await saveBackupFile(datosCompactos, true);
+  } catch(e) { console.warn('[NorAcuaV3] autoBackup error:', e.message); }
 }
+
 const APP_VERSION = "3.0";
 // v3: generador de UUID para nuevos registros
 const uuid = () => crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random()*16|0; return (c==='x'?r:(r&0x3|0x8)).toString(16); });
@@ -701,27 +696,7 @@ if (typeof window !== "undefined" && window.localStorage) {
   }
 } // Actualizar en cada release importante
 
-const SK_LAST_LOGIN = "na-last-login";
-const SK = {
-  proj: "na-v20-proyectos",
-  regs: "na-v20-registros",
-  cEnc: "na-v21-conceptos-enc",
-  users: "na-v20-usuarios",
-  trabs: "na-v20-trabajadores",
-  resps: "na-v20-responsables",
-  hist: "na-v20-historico",
-  clientes: "na-v20-clientes",
-  series: "na-v20-series",
-  facturas: "na-v21-facturas",
-  estaciones: "na-v20-estaciones",
-  ofertas: "na-v21-ofertas",
-  cfgOfertas: "na-v21-cfg-ofertas",
-  cActivos: "na-v21-conceptos-activos",
-  hsseSups: "na-v25-hsse-sups",
-  hsseCfg: "na-v25-hsse-cfg",
-  hsseHist: "na-v25-hsse-hist",
-  deletedIds: "na-v21-deleted-ids"
-};
+// v3: SK object removed — all storage via dbXxx functions
 const ZONAS = ["CENTRO", "NORTE", "CATALUÑA", "BALEARES", "OTROS"];
 const IVA_OPS = [{v:0,l:"0%"},{v:4,l:"4%"},{v:10,l:"10%"},{v:21,l:"21%"}];
 const ESTADOS_FACT = ["Borrador","Enviada","Pendiente","Cobrada","Vencida","Anulada"];
@@ -3637,12 +3612,12 @@ function App() {
         const [
           projRows, regRows, respRows, histRows,
           clienteRows, serieRows, factRows, estRows,
-          ofertaRows, hssRows, capsRows, concRows
+          ofertaRows, hssRows, capsRows, concRows, hsseHistRows
         ] = await Promise.all([
           dbProyectos.getAll(),
           dbRegistros.getAll(),
           dbResponsables.getAll(),
-          dbInformes.getAll(),
+          dbInformes.getAll(),        // todos los tipos (actividad + hsse)
           dbClientes.getAll(),
           dbSeries.getAll(),
           dbFacturas.getAll(),
@@ -3650,7 +3625,8 @@ function App() {
           dbOfertas.getAll(),
           dbHsse.getAll(),
           dbCapitulos.getAll(),
-          dbConceptos.getAll()
+          dbConceptos.getAll(),
+          dbInformes.getByTipo('hsse') // informes HSSE separados
         ]);
 
         // 3. Proyectos
@@ -3698,8 +3674,24 @@ function App() {
         const REQUIRED_RESPS = [{ nombre: 'Concepción Gutierrez', sexo: 'F' }, { nombre: 'Daniel Romero', sexo: 'M' }];
         setResps(respsV3.length ? respsV3 : REQUIRED_RESPS);
 
-        // 6. Histórico (informes)
-        setHistorico((histRows || []).map(_rowToInforme));
+        // 6. Histórico (informes de actividad — tipo != 'hsse')
+        const histActividad = (histRows || []).filter(r => r.tipo !== 'hsse');
+        setHistorico(histActividad.map(_rowToInforme));
+
+        // 6b. Histórico HSSE
+        const hsseHistV3 = (hsseHistRows || []).map(r => ({
+          id: r.id,
+          nom: r.periodo || r.id,
+          html: r.html || '',
+          desde: r.periodo ? r.periodo.split('/')[0] : '',
+          hasta: r.periodo ? r.periodo.split('/')[1] : '',
+          po: r.po || '',
+          periodo: r.periodo || '',
+          supIds: (() => { try { return JSON.parse(r.reg_ids || '[]'); } catch { return []; } })(),
+          facturado: false,
+          creadoEn: r.creado_en || ''
+        }));
+        setHsseHist(hsseHistV3);
 
         // 7. Clientes
         const clientesV3 = (clienteRows || []).map(r => ({
@@ -3882,7 +3874,8 @@ function App() {
         try {
           const rows = historico.map(inf => ({
             id: inf.id, html: inf.html || '', periodo: inf.periodo || '',
-            po: inf.po || null, reg_ids: JSON.stringify(inf.regIds || []),
+            po: JSON.stringify({ nom: inf.nom, proyNombre: inf.proyNombre, proyectoId: inf.proyectoId, importeTotal: inf.importeTotal, estado: inf.estado || 'borrador', facturaRef: inf.facturaRef || null, po: inf.po || null, periodo: inf.periodo }),
+            reg_ids: JSON.stringify(inf.regIds || []),
             creado_en: inf.creadoEn || new Date().toISOString(), tipo: inf.tipo || 'actividad'
           }));
           for (let i = 0; i < rows.length; i += 50) {
@@ -4020,7 +4013,29 @@ function App() {
   }, [hsseSups, loading]);
 
   useEffect(() => {}, [hsseCfg, hsseInfCounter, loading]);
-  useEffect(() => {}, [hsseHist, loading]);
+
+  // hsseHist: persistir en na_informes con tipo='hsse'
+  useEffect(() => {
+    if (!loading && hsseHist.length > 0) {
+      clearTimeout(window._bkHsseHist);
+      window._bkHsseHist = setTimeout(async () => {
+        try {
+          const rows = hsseHist.map(inf => ({
+            id: inf.id,
+            html: inf.html || '',
+            periodo: inf.periodo || (inf.desde && inf.hasta ? inf.desde + '/' + inf.hasta : ''),
+            po: inf.po || null,
+            reg_ids: JSON.stringify(inf.supIds || []),
+            creado_en: inf.creadoEn || new Date().toISOString(),
+            tipo: 'hsse'
+          }));
+          for (let i = 0; i < rows.length; i += 20) {
+            await _sb('/rest/v1/na_informes', { method: 'POST', body: JSON.stringify(rows.slice(i, i+20)), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } });
+          }
+        } catch(e) { console.error('[NorAcuaV3] persistencia hsseHist:', e); }
+      }, 1200);
+    }
+  }, [hsseHist, loading]);
   useEffect(() => { window._naStateRef = { hsseSups, facturas }; }, [hsseSups, facturas]);
 
   // ── v3: saveConcs sin cifrado AES ────────────────────────────────────────
@@ -4467,11 +4482,16 @@ function App() {
       regIds: regIds || []
     };
     // v3: persistir inmediatamente en BD (no esperar al useEffect)
+    // Los campos extras (nom, proyNombre, etc.) se serializan en la columna `po` como JSON
+    const metaJson = JSON.stringify({
+      nom, proyNombre, importeTotal, proyectoId, periodo,
+      estado: 'borrador', po: null
+    });
     dbInformes.upsert({
       id: entry.id,
       html: html || '',
       periodo: periodo || '',
-      po: null,
+      po: metaJson,
       reg_ids: JSON.stringify(regIds || []),
       creado_en: entry.creadoEn,
       tipo: tipo || 'actividad'
@@ -4719,8 +4739,18 @@ function App() {
       }
       if (_histId) {
         const factNum = editDoc.numero || "—";
-        setHistorico(h => h.map(x => x.id === _histId ? { ...x, estado: "facturado", facturaRef: factNum } : x));
-        // v3: no hay golden state — la FK factura_id es la fuente de verdad
+        setHistorico(h => h.map(x => {
+          if (x.id !== _histId) return x;
+          const updated = { ...x, estado: "facturado", facturaRef: factNum };
+          // v3: persistir cambio de estado en BD inmediatamente
+          dbInformes.upsert({
+            id: updated.id, html: updated.html || '', periodo: updated.periodo || '',
+            po: JSON.stringify({ nom: updated.nom, proyNombre: updated.proyNombre, proyectoId: updated.proyectoId, importeTotal: updated.importeTotal, estado: 'facturado', facturaRef: factNum, po: updated.po || null, periodo: updated.periodo }),
+            reg_ids: JSON.stringify(updated.regIds || []),
+            creado_en: updated.creadoEn || new Date().toISOString(), tipo: updated.tipo || 'actividad'
+          }).catch(e => console.error('[NorAcuaV3] update informe facturado:', e));
+          return updated;
+        }));
       }
       if (cleanDoc.ofertaRef || cleanDoc.observaciones?.startsWith("Ref. oferta:")) {
         const factNum2 = editDoc.numero || "—";
@@ -6978,27 +7008,31 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
         sm: true, variant: "ghost",
         style: { color: "#d48a10", borderColor: "#d48a10" },
         onClick: async () => {
-          if (!window.confirm('¿Recuperar datos de emergencia desde GitHub?\n\nEsto cargará la última versión del backup de GitHub y la usará como fuente de datos.\n\n¡Solo usar en caso de emergencia!')) return;
+          if (!window.confirm('¿Recuperar datos de emergencia desde GitHub?\n\nEsto cargará la última versión del backup de GitHub y la restaurará en Supabase v3.\n\n¡Solo usar en caso de emergencia!')) return;
           const ghData = await ghPull();
           if (!ghData) { alert('❌ No se pudo recuperar desde GitHub. Verifica el token y que el repo exista.'); return; }
-          const preview = Object.entries(ghData).map(([k,v]) => k.replace('na-v2.-','') + ': ' + (Array.isArray(v)?v.length+' items':typeof v)).join('\n');
-          if (!window.confirm('Datos encontrados en GitHub:\n\n' + preview + '\n\n¿Restaurar estos datos?')) return;
-          // Restaurar datos clave
-          const SB_URL2 = "https://lhmawivuxgekxleqvqle.supabase.co";
-          const SB_KEY2 = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxobWF3aXZ1eGdla3hsZXF2cWxlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2MTY1NTYsImV4cCI6MjA5NDE5MjU1Nn0.frbxipEXiMfxsiRjo9rilHDiXoc3BqYGxOh-Qgq0VhU";
-          const SK_TABLE_MAP2 = {"na-v20-proyectos":"na_proyectos","na-v20-registros":"na_registros","na-v21-facturas":"na_facturas","na-v21-ofertas":"na_ofertas","na-v20-clientes":"na_clientes","na-v20-trabajadores":"na_trabajadores","na-v20-responsables":"na_responsables","na-v20-estaciones":"na_estaciones","na-v20-series":"na_series"};
-          for (const [key, table] of Object.entries(SK_TABLE_MAP2)) {
-            const value = ghData[key];
-            if (!value) continue;
-            const strVal = typeof value === 'string' ? value : JSON.stringify(value);
-            localStorage.setItem('na_bk_' + key, strVal);
-            await fetch(SB_URL2 + '/rest/v1/' + table, { method: 'POST',
-              headers: { 'apikey': SB_KEY2, 'Authorization': 'Bearer ' + SB_KEY2, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates,return=minimal' },
-              body: JSON.stringify([{ id: key, data: strVal, updated_at: new Date().toISOString() }])
-            }).catch(()=>{});
-          }
-          alert('✅ Restauración desde GitHub completada. Recarga la app.');
-          setTimeout(() => window.location.reload(true), 1500);
+          const preview = Object.entries(ghData).map(([k,v]) => k + ': ' + (Array.isArray(v)?v.length+' items':typeof v)).join('\n');
+          if (!window.confirm('Datos encontrados en GitHub:\n\n' + preview + '\n\n¿Restaurar estos datos en Supabase v3?')) return;
+          try {
+            // Restaurar colecciones v3 via upsert batch
+            const MAP = {
+              proyectos: '/rest/v1/na_proyectos',
+              registros: '/rest/v1/na_registros',
+              facturas: '/rest/v1/na_facturas',
+              ofertas: '/rest/v1/na_ofertas',
+              clientes: '/rest/v1/na_clientes',
+              hsse: '/rest/v1/na_hsse_supervisiones'
+            };
+            for (const [key, path] of Object.entries(MAP)) {
+              const rows = ghData[key];
+              if (!Array.isArray(rows) || !rows.length) continue;
+              for (let i = 0; i < rows.length; i += 50) {
+                await _sb(path, { method: 'POST', body: JSON.stringify(rows.slice(i, i+50)), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } });
+              }
+            }
+            alert('✅ Restauración desde GitHub completada. Recargando...');
+            setTimeout(() => window.location.reload(true), 1200);
+          } catch(e) { alert('❌ Error en restauración: ' + e.message); }
         }
       }, "🔄 Restaurar GitHub"),
       /*#__PURE__*/React.createElement(Btn, {
@@ -12211,7 +12245,7 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
                 },
                 style:{background:"#1a9e7a",color:"#fff",border:"none",borderRadius:5,padding:"3px 8px",cursor:"pointer",fontSize:11,fontWeight:600}
               },"€ Facturar"),
-              React.createElement("button",{onClick:function(){if(window.confirm("\u00BFEliminar este informe?"))setHsseHist(function(p){return p.filter(function(x){return x.id!==inf.id;});});},style:{background:"transparent",border:"1px solid #d03030",borderRadius:5,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#d03030"}},"Eliminar")
+              React.createElement("button",{onClick:function(){if(window.confirm("\u00BFEliminar este informe?")){dbInformes.softDelete(inf.id).catch(function(e){console.error("[NorAcuaV3] del hsseHist:",e);});setHsseHist(function(p){return p.filter(function(x){return x.id!==inf.id;});});}},style:{background:"transparent",border:"1px solid #d03030",borderRadius:5,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#d03030"}},"Eliminar")
             )
           );
         })
