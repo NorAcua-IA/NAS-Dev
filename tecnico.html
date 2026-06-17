@@ -2379,17 +2379,6 @@ function App() {
     setMResp(false);
   };
   const delRs = n => setResps(r => r.filter(x => (typeof x === "object" ? x.nombre : x) !== n));
-  const cambCl = async () => {
-    if (!mClave || !fCl.n || fCl.n !== fCl.c) return;
-    const h = await sha256(fCl.n);
-    const u = usrs[mClave.id];
-    if (u?.id) {
-      _sb('/rest/v1/na_usuarios?id=eq.' + u.id, { method: 'PATCH', body: JSON.stringify({ password_hash: h }) }).catch(e => console.error('[NorAcuaV3-T] cambCl:', e));
-    }
-    setUsrs(prev => ({ ...prev, [mClave.id]: { ...prev[mClave.id], hash: h } }));
-    setMClave(null); setFCl({ n: "", c: "" });
-    alert(`Contraseña de ${mClave.nombre} actualizada.`);
-  };
   const guardarHist = (html, nom, tipo, proyNombre, periodo, importeTotal, proyectoId, regIds) => {
     const entry = {
       id: uuid(),
