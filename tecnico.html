@@ -48,10 +48,11 @@ const dbLineasRegistro = {
 window._naTecnicoIdMap = {}; window._naTecnicoNameMap = {}; window._naEstNomMap = {}; window._naRespNomMap = {};
 function _rowToReg(row) {
   const tecNombre = window._naTecnicoNameMap?.[row.tecnico_id] || '';
-  return { id: row.id, proyectoId: row.proyecto_id, conceptoId: row.concepto_id || null, trabajador: tecNombre, tecnicoId: row.tecnico_id || null, fecha: row.fecha, observaciones: row.observaciones || '', cantidad: row.cantidad != null ? String(row.cantidad) : '1', estado: row.estado || 'pendiente', estadoCertif: row.estado_certif || null, facturado: !!row.factura_id, facturaId: row.factura_id || null, facturaRef: null, esGrupo: !!row.es_grupo, lineasGrupo: [], creadoPor: row.creado_por_id || '', createdAt: row.creado_en || row.fecha, ofertaId: row.oferta_id || null, precioManual: row.precio_unitario != null ? row.precio_unitario : null, descuento: row.descuento_pct || 0 };
+  return { id: row.id, proyectoId: row.proyecto_id, conceptoId: row.concepto_id || null, trabajador: tecNombre, tecnicoId: row.tecnico_id || null, fecha: row.fecha, observaciones: row.observaciones || '', cantidad: row.cantidad != null ? String(row.cantidad) : '1', estado: row.estado || 'pendiente', estadoCertif: row.estado_certif || null, facturado: !!row.factura_id, facturaId: row.factura_id || null, facturaRef: null, esGrupo: !!row.es_grupo, lineasGrupo: [], creadoPor: row.creado_por_id || '', creadoPorId: row.creado_por_id || null, createdAt: row.creado_en || row.fecha, ofertaId: row.oferta_id || null, precioManual: row.precio_unitario != null ? row.precio_unitario : null, descuento: row.descuento_pct || 0 };
 }
 function _regToRow(reg) {
-  return { id: reg.id, proyecto_id: reg.proyectoId || null, concepto_id: reg.conceptoId || null, tecnico_id: window._naTecnicoIdMap[reg.trabajador] || null, fecha: reg.fecha, observaciones: reg.observaciones || '', cantidad: parseFloat(reg.cantidad) || 1, estado: reg.estado || 'pendiente', estado_certif: reg.estadoCertif || null, factura_id: reg.facturaId || null, es_grupo: !!reg.esGrupo, precio_unitario: reg.precioManual != null ? reg.precioManual : null, descuento_pct: reg.descuento || 0, oferta_id: reg.ofertaId || null };
+  const tecId = window._naTecnicoIdMap[reg.trabajador] || null;
+  return { id: reg.id, proyecto_id: reg.proyectoId || null, concepto_id: reg.conceptoId || null, tecnico_id: tecId, creado_por_id: reg.creadoPorId || tecId || null, fecha: reg.fecha, observaciones: reg.observaciones || '', cantidad: parseFloat(reg.cantidad) || 1, estado: reg.estado || 'pendiente', estado_certif: reg.estadoCertif || null, factura_id: reg.facturaId || null, es_grupo: !!reg.esGrupo, precio_unitario: reg.precioManual != null ? reg.precioManual : null, descuento_pct: reg.descuento || 0, oferta_id: reg.ofertaId || null };
 }
 function _rowToHsse(row) {
   const d = (row.datos_supervision && typeof row.datos_supervision === 'object') ? row.datos_supervision : {};
@@ -2237,7 +2238,7 @@ function App() {
       estado: "pendiente",
       precioManual: null,
       createdAt: new Date().toISOString(),
-      creadoPor: user?.nombre || "",
+      creadoPor: user?.nombre || "", creadoPorId: user?.id || null,
       esGrupo: true,
       lineasGrupo: regLineas.map(l => ({
         conceptoId: l.conceptoId,
@@ -2268,7 +2269,7 @@ function App() {
       estado: "pendiente",
       precioManual: null,
       createdAt: new Date().toISOString(),
-      creadoPor: user?.nombre || ""
+      creadoPor: user?.nombre || "", creadoPorId: user?.id || null
     }]);
     setFRg(p => ({
       ...p,
