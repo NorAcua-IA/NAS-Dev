@@ -3645,18 +3645,24 @@ function App() {
         usrsV3.forEach(u => { tecNomMap[u.id] = u.nombre; });
         window._naTecnicoNameMap = tecNomMap;
 
-        // Mapear a formato interno {login: {nombre, rol, hash, zonas}}
+        // Mapear a formato interno — indexar por nombre, lowercase y legacy keys
         const usrsMap = {};
         usrsV3.forEach(u => {
-          const loginKey = u.nombre; usrsMap[loginKey] = {
+          const entry = {
             nombre: u.nombre,
             rol: u.rol,
             hash: u.password_hash,
             zonas: u.zonas || ZONAS,
-            id: u.id
+            id: u.id,
+            _fromBD: true  // marca para distinguir de DEF_USERS en el selector
           };
+          usrsMap[u.nombre] = entry;                // "Daniel"
+          usrsMap[u.nombre.toLowerCase()] = entry;  // "daniel"
+          if (u.legacy_nombre && u.legacy_nombre !== u.nombre) {
+            usrsMap[u.legacy_nombre] = entry;
+          }
         });
-        // Completar con DEF_USERS si falta algún admin (fallback)
+        // Solo añadir DEF_USERS si el usuario NO existe en BD (admin offline fallback)
         Object.entries(DEF_USERS).forEach(([k, v]) => {
           if (!usrsMap[k]) usrsMap[k] = { ...v, hash: DEF_PWS[k] };
         });
@@ -5447,10 +5453,16 @@ function App() {
       label: "Usuario",
       value: lid,
       onChange: setLid,
-      options: Object.entries(usrs).map(([id, u]) => ({
-        v: id,
-        l: `${u.nombre}${u.rol === "admin" ? " · Admin" : ""}`
-      }))
+      options: Object.entries(usrs)
+        // Solo mostrar entradas donde la clave == nombre.toLowerCase() (canónica)
+        // Esto evita duplicados entre "daniel"/"Daniel"/"ignacio"/"Ignacio"
+        .filter(([id, u]) => id === u.nombre.toLowerCase() || id === u.nombre)
+        .filter(([id, u], idx, arr) => arr.findIndex(([,u2]) => u2.nombre === u.nombre) === idx)
+        .sort((a,b) => (a[1].rol==='admin'?0:1) - (b[1].rol==='admin'?0:1) || a[1].nombre.localeCompare(b[1].nombre))
+        .map(([id, u]) => ({
+          v: id,
+          l: `${u.nombre}${u.rol === "admin" ? " · Admin" : ""}`
+        }))
     }), /*#__PURE__*/React.createElement(Inp, {
       label: "Contrase\xF1a",
       type: "password",
