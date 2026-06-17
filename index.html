@@ -7157,7 +7157,11 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
     )
   ), /*#__PURE__*/React.createElement(Sec, {
     title: "Usuarios"
-  }, Object.entries(usrs).map(([id, u]) => /*#__PURE__*/React.createElement("div", {
+  }, Object.entries(usrs)
+    .filter(([id, u]) => id === u.nombre || id === u.nombre.toLowerCase())
+    .filter(([id, u], idx, arr) => arr.findIndex(([,u2]) => u2.nombre === u.nombre) === idx)
+    .sort((a,b) => (a[1].rol==='admin'?0:1)-(b[1].rol==='admin'?0:1) || a[1].nombre.localeCompare(b[1].nombre))
+    .map(([id, u]) => /*#__PURE__*/React.createElement("div", {
     key: id,
     style: {
       display: "flex",
