@@ -177,11 +177,13 @@ function _rowToReg(row) {
 
 // Convierte el objeto interno de React a fila v3 para upsert
 function _regToRow(reg, tecnicoIdMap) {
+  const tecId = tecnicoIdMap[reg.trabajador] || null;
   return {
     id: reg.id,
     proyecto_id: reg.proyectoId || null,
     concepto_id: reg.conceptoId || null,
-    tecnico_id: tecnicoIdMap[reg.trabajador] || null,
+    tecnico_id: tecId,
+    creado_por_id: reg.creadoPorId || tecId || null,
     fecha: reg.fecha,
     observaciones: reg.observaciones || '',
     cantidad: parseFloat(reg.cantidad) || 1,
