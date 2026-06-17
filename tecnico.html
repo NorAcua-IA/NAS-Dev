@@ -2874,6 +2874,17 @@ function App() {
       clienteId: ""
     });
   };
+  // v3: funciones helper de lookup
+  const gP = id => proyectos.find(p => p.id === id);
+  const gC = id => concs.find(c => c.id === id);
+  const gCL = id => clientes.find(c => c.id === id);
+  const gS = id => series.find(s => s.id === id);
+  const gPU = r => {
+    if (!isAdmin) return null;
+    if (r.precioManual != null) return r.precioManual;
+    const c = gC(r.conceptoId), z = gP(r.proyectoId)?.zona || "";
+    return c?.p?.[z] ?? null;
+  };
   const yr = yrNow();
   const factYear = facturas.filter(f => safeYear(f.creadoEn) === yr && f.estado !== "Anulada");
   const totPend = facturas.filter(f => f.estado === "Enviada").reduce((s, f) => s + calcDocTotal(f).total, 0);
