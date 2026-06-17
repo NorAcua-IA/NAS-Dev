@@ -2043,6 +2043,8 @@ function App() {
     const _t = setTimeout(() => { setLoading(false); setHashesReady(true); }, 8000);
     return () => clearTimeout(_t);
   }, []);
+  const isAdmin = user?.rol === "admin";
+
   // ── v3: useEffects de PERSISTENCIA técnico ─────────────────────────────────
   // Técnico solo persiste sus propios registros y HSSE. El resto es read-only.
 
