@@ -31,36 +31,36 @@ const _sb = async (path, opts = {}) => {
 
 // Proyectos
 const dbProyectos = {
-  getAll: () => _sb('/rest/v1/na_proyectos?eliminado_en=is.null&order=nombre.asc&limit=1000'),
+  getAll: () => _sb('/rest/v1/na_proyectos?activo=eq.true&order=nombre.asc&limit=1000'),
   upsert: row => _sb('/rest/v1/na_proyectos', { method: 'POST', body: JSON.stringify(row), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } }),
-  softDelete: id => _sb('/rest/v1/na_proyectos?id=eq.' + id, { method: 'PATCH', body: JSON.stringify({ eliminado_en: new Date().toISOString() }) })
+  softDelete: id => _sb('/rest/v1/na_proyectos?id=eq.' + id, { method: 'PATCH', body: JSON.stringify({ activo: false }) })
 };
 
 // Clientes
 const dbClientes = {
-  getAll: () => _sb('/rest/v1/na_clientes?eliminado_en=is.null&order=nombre.asc&limit=1000'),
+  getAll: () => _sb('/rest/v1/na_clientes?order=nombre.asc&limit=1000'),
   upsert: row => _sb('/rest/v1/na_clientes', { method: 'POST', body: JSON.stringify(row), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } }),
-  softDelete: id => _sb('/rest/v1/na_clientes?id=eq.' + id, { method: 'PATCH', body: JSON.stringify({ eliminado_en: new Date().toISOString() }) })
+  softDelete: id => _sb('/rest/v1/na_clientes?id=eq.' + id, { method: 'DELETE' })
 };
 
 // Estaciones
 const dbEstaciones = {
-  getAll: () => _sb('/rest/v1/na_estaciones?eliminado_en=is.null&order=nombre.asc&limit=2000'),
+  getAll: () => _sb('/rest/v1/na_estaciones?order=nombre.asc&limit=2000'),
   upsert: row => _sb('/rest/v1/na_estaciones', { method: 'POST', body: JSON.stringify(row), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } }),
-  softDelete: id => _sb('/rest/v1/na_estaciones?id=eq.' + id, { method: 'PATCH', body: JSON.stringify({ eliminado_en: new Date().toISOString() }) })
+  softDelete: id => _sb('/rest/v1/na_estaciones?id=eq.' + id, { method: 'DELETE' })
 };
 
 // Responsables
 const dbResponsables = {
-  getAll: () => _sb('/rest/v1/na_responsables?eliminado_en=is.null&order=nombre.asc&limit=500'),
+  getAll: () => _sb('/rest/v1/na_responsables?order=nombre.asc&limit=500'),
   upsert: row => _sb('/rest/v1/na_responsables', { method: 'POST', body: JSON.stringify(row), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } }),
-  softDelete: id => _sb('/rest/v1/na_responsables?id=eq.' + id, { method: 'PATCH', body: JSON.stringify({ eliminado_en: new Date().toISOString() }) })
+  softDelete: id => _sb('/rest/v1/na_responsables?id=eq.' + id, { method: 'DELETE' })
 };
 
 // Usuarios (login + lista técnicos)
 const dbUsuarios = {
   getAll: () => _sb('/rest/v1/na_usuarios?activo=eq.true&order=nombre.asc&limit=100'),
-  getByLogin: login => _sb('/rest/v1/na_usuarios?login=eq.' + encodeURIComponent(login) + '&limit=1'),
+  getByLogin: nombre => _sb('/rest/v1/na_usuarios?nombre=eq.' + encodeURIComponent(nombre) + '&limit=1'),
   updateHash: (id, hash) => _sb('/rest/v1/na_usuarios?id=eq.' + id, { method: 'PATCH', body: JSON.stringify({ password_hash: hash }) })
 };
 
@@ -74,10 +74,10 @@ const dbSeries = {
 
 // Registros de actividad
 const dbRegistros = {
-  getAll: () => _sb('/rest/v1/na_registros?eliminado_en=is.null&order=fecha.desc&limit=2000'),
+  getAll: () => _sb('/rest/v1/na_registros?order=fecha.desc&limit=2000'),
   upsert: row => _sb('/rest/v1/na_registros', { method: 'POST', body: JSON.stringify(row), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } }),
   patch: (id, data) => _sb('/rest/v1/na_registros?id=eq.' + id, { method: 'PATCH', body: JSON.stringify(data) }),
-  softDelete: id => _sb('/rest/v1/na_registros?id=eq.' + id, { method: 'PATCH', body: JSON.stringify({ eliminado_en: new Date().toISOString() }) })
+  softDelete: id => _sb('/rest/v1/na_registros?id=eq.' + id, { method: 'DELETE' })
 };
 
 // Líneas de registro (grupos)
@@ -89,10 +89,10 @@ const dbLineasRegistro = {
 
 // Facturas
 const dbFacturas = {
-  getAll: () => _sb('/rest/v1/na_facturas?eliminado_en=is.null&order=fecha.desc&limit=2000'),
+  getAll: () => _sb('/rest/v1/na_facturas?order=fecha.desc&limit=2000'),
   upsert: row => _sb('/rest/v1/na_facturas', { method: 'POST', body: JSON.stringify(row), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } }),
   patch: (id, data) => _sb('/rest/v1/na_facturas?id=eq.' + id, { method: 'PATCH', body: JSON.stringify(data) }),
-  softDelete: id => _sb('/rest/v1/na_facturas?id=eq.' + id, { method: 'PATCH', body: JSON.stringify({ eliminado_en: new Date().toISOString() }) })
+  softDelete: id => _sb('/rest/v1/na_facturas?id=eq.' + id, { method: 'DELETE' })
 };
 
 // Líneas de factura
@@ -104,38 +104,38 @@ const dbLineasFactura = {
 
 // Ofertas
 const dbOfertas = {
-  getAll: () => _sb('/rest/v1/na_ofertas?eliminado_en=is.null&order=creado_en.desc&limit=2000'),
+  getAll: () => _sb('/rest/v1/na_ofertas?order=creado_en.desc&limit=2000'),
   upsert: row => _sb('/rest/v1/na_ofertas', { method: 'POST', body: JSON.stringify(row), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } }),
   patch: (id, data) => _sb('/rest/v1/na_ofertas?id=eq.' + id, { method: 'PATCH', body: JSON.stringify(data) }),
-  softDelete: id => _sb('/rest/v1/na_ofertas?id=eq.' + id, { method: 'PATCH', body: JSON.stringify({ eliminado_en: new Date().toISOString() }) })
+  softDelete: id => _sb('/rest/v1/na_ofertas?id=eq.' + id, { method: 'DELETE' })
 };
 
 // Informes (histórico actividad + HSSE)
 const dbInformes = {
   getAll: () => _sb('/rest/v1/na_informes?eliminado_en=is.null&order=creado_en.desc&limit=500'),
-  getByTipo: tipo => _sb('/rest/v1/na_informes?eliminado_en=is.null&tipo=eq.' + tipo + '&order=creado_en.desc&limit=500'),
+  getByTipo: tipo => _sb('/rest/v1/na_informes?order=creado_en.desc&limit=500'),
   upsert: row => _sb('/rest/v1/na_informes', { method: 'POST', body: JSON.stringify(row), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } }),
   softDelete: id => _sb('/rest/v1/na_informes?id=eq.' + id, { method: 'PATCH', body: JSON.stringify({ eliminado_en: new Date().toISOString() }) })
 };
 
 // Supervisiones HSSE
 const dbHsse = {
-  getAll: () => _sb('/rest/v1/na_hsse_supervisiones?eliminado_en=is.null&order=fecha.desc&limit=2000'),
+  getAll: () => _sb('/rest/v1/na_hsse_supervisiones?order=fecha.desc&limit=2000'),
   upsert: row => _sb('/rest/v1/na_hsse_supervisiones', { method: 'POST', body: JSON.stringify(row), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } }),
   patch: (id, data) => _sb('/rest/v1/na_hsse_supervisiones?id=eq.' + id, { method: 'PATCH', body: JSON.stringify(data) }),
-  softDelete: id => _sb('/rest/v1/na_hsse_supervisiones?id=eq.' + id, { method: 'PATCH', body: JSON.stringify({ eliminado_en: new Date().toISOString() }) })
+  softDelete: id => _sb('/rest/v1/na_hsse_supervisiones?id=eq.' + id, { method: 'DELETE' })
 };
 
 // Conceptos (preciario — sin cifrado en v3)
 const dbConceptos = {
-  getAll: () => _sb('/rest/v1/na_conceptos?eliminado_en=is.null&order=codigo.asc&limit=500'),
+  getAll: () => _sb('/rest/v1/na_conceptos?order=orden.asc&limit=500'),
   upsert: row => _sb('/rest/v1/na_conceptos', { method: 'POST', body: JSON.stringify(row), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } }),
   patch: (id, data) => _sb('/rest/v1/na_conceptos?id=eq.' + id, { method: 'PATCH', body: JSON.stringify(data) })
 };
 
 // Capítulos del preciario
 const dbCapitulos = {
-  getAll: () => _sb('/rest/v1/na_capitulos?eliminado_en=is.null&order=orden.asc&limit=100')
+  getAll: () => _sb('/rest/v1/na_capitulos?order=orden.asc&limit=100')
 };
 
 // Sesiones (último login)
@@ -148,26 +148,30 @@ const dbSesiones = {
 
 // Convierte fila v3 de na_registros al formato interno que espera React (igual que v2.8)
 function _rowToReg(row) {
+  // tecnico_nombre no existe — se resuelve desde _naTecnicoNameMap construido al cargar
+  const tecNombre = window._naTecnicoNameMap?.[row.tecnico_id] || '';
   return {
     id: row.id,
     proyectoId: row.proyecto_id,
     conceptoId: row.concepto_id || null,
-    trabajador: row.tecnico_nombre || '',
+    trabajador: tecNombre,
     tecnicoId: row.tecnico_id || null,
     fecha: row.fecha,
     observaciones: row.observaciones || '',
     cantidad: row.cantidad != null ? String(row.cantidad) : '1',
     estado: row.estado || 'pendiente',
+    estadoCertif: row.estado_certif || null,
     facturado: !!row.factura_id,
     facturaId: row.factura_id || null,
-    facturaRef: row.factura_numero || null,
+    facturaRef: null, // se resuelve si es necesario
     esGrupo: !!row.es_grupo,
-    lineasGrupo: [],        // se rellenan aparte si es_grupo
-    creadoPor: row.creado_por || '',
+    lineasGrupo: [],
+    creadoPor: row.creado_por_id || '',
     createdAt: row.creado_en || row.fecha,
-    // campos adicionales v3
     ofertaId: row.oferta_id || null,
-    po: row.po || ''
+    po: row.po || '',
+    precioManual: row.precio_unitario != null ? row.precio_unitario : null,
+    descuento: row.descuento_pct || 0
   };
 }
 
@@ -178,17 +182,16 @@ function _regToRow(reg, tecnicoIdMap) {
     proyecto_id: reg.proyectoId || null,
     concepto_id: reg.conceptoId || null,
     tecnico_id: tecnicoIdMap[reg.trabajador] || null,
-    tecnico_nombre: reg.trabajador || '',
     fecha: reg.fecha,
     observaciones: reg.observaciones || '',
     cantidad: parseFloat(reg.cantidad) || 1,
     estado: reg.estado || 'pendiente',
+    estado_certif: reg.estadoCertif || null,
     factura_id: reg.facturaId || null,
     es_grupo: !!reg.esGrupo,
-    creado_por: reg.creadoPor || '',
-    creado_en: reg.createdAt || new Date().toISOString(),
-    oferta_id: reg.ofertaId || null,
-    po: reg.po || null
+    precio_unitario: reg.precioManual != null ? reg.precioManual : null,
+    descuento_pct: reg.descuento || 0,
+    oferta_id: reg.ofertaId || null
   };
 }
 
@@ -200,38 +203,44 @@ function _rowToFact(row) {
     tipo: row.tipo || 'Factura',
     estado: row.estado || 'Borrador',
     fecha: row.fecha,
-    fechaVto: row.fecha_vencimiento || '',
+    fechaVto: row.fecha_vto || '',
     clienteId: row.cliente_id || '',
-    clienteNombre: row.cliente_nombre || '',
+    clienteNombre: '',  // se resuelve desde clientes[]
     serieId: row.serie_id || '',
-    concepto: row.concepto || '',
-    po: row.po || '',
-    lineas: [],             // se rellenan aparte desde na_lineas_factura
-    notas: row.notas || '',
+    concepto: row.observaciones || '',
+    po: row.po_ref || '',
+    lineas: [],
+    notas: '',
     creadoEn: row.creado_en || row.fecha,
     baseImponible: row.base_imponible != null ? row.base_imponible : null,
-    totalIva: row.total_iva != null ? row.total_iva : null,
-    total: row.total != null ? row.total : null
+    totalIva: row.iva_amt != null ? row.iva_amt : null,
+    total: row.total != null ? row.total : null,
+    metodoPago: row.metodo_pago || '',
+    ivaPct: row.iva_pct || 21
   };
 }
 
 // Convierte fila v3 de na_ofertas al formato interno React
 function _rowToOferta(row) {
+  // na_ofertas almacena datos extra en metadatos (jsonb)
+  const m = (row.metadatos && typeof row.metadatos === 'object') ? row.metadatos : {};
   return {
     id: row.id,
-    numero: row.numero || '',
+    numero: row.codigo || m.numero || '',
     asunto: row.asunto || '',
     estado: row.estado || 'Borrador',
-    fecha: row.fecha,
+    fecha: m.fecha || row.creado_en?.slice(0,10) || '',
     clienteId: row.cliente_id || '',
-    estacion: row.estacion || '',
-    zona: row.zona || '',
-    responsable: row.responsable || '',
-    lineas: Array.isArray(row.lineas) ? row.lineas : (row.lineas ? JSON.parse(row.lineas) : []),
-    version: row.version || 1,
-    ref: row.referencia || '',
-    notas: row.notas || '',
-    creadoEn: row.creado_en || row.fecha
+    estacion: m.estacion || '',
+    zona: m.zona || '',
+    responsable: m.responsable || '',
+    lineas: Array.isArray(m.lineas) ? m.lineas : [],
+    version: m.version || 1,
+    ref: m.ref || '',
+    notas: m.notas || '',
+    creadoEn: row.creado_en || '',
+    po: row.po || '',
+    importeTotal: row.importe_total || null
   };
 }
 
@@ -299,22 +308,25 @@ function _hsseToRow(sup) {
 // Convierte fila v3 de na_informes al formato interno React
 // La columna `po` almacena JSON con metadatos extras que la tabla no tiene como columnas
 function _rowToInforme(row) {
-  let meta = {};
-  try { if (row.po && row.po.startsWith('{')) meta = JSON.parse(row.po); } catch {}
+  // na_informes tiene: nombre, cliente_id, proyecto_id, periodo_desde, periodo_hasta,
+  //                    estado, importe_total, factura_id, html_cache, eliminado_en
+  const periodo = row.periodo_desde && row.periodo_hasta
+    ? row.periodo_desde + ' → ' + row.periodo_hasta
+    : (row.nombre || row.id);
   return {
     id: row.id,
-    html: row.html || '',
-    periodo: meta.periodo || row.periodo || '',
-    po: meta.po || '',
-    nom: meta.nom || row.periodo || row.id,
-    proyNombre: meta.proyNombre || '',
-    proyectoId: meta.proyectoId || null,
-    importeTotal: meta.importeTotal || null,
-    estado: meta.estado || 'borrador',
-    facturaRef: meta.facturaRef || null,
-    regIds: (() => { try { return JSON.parse(row.reg_ids || '[]'); } catch { return []; } })(),
+    html: row.html_cache || '',
+    periodo: periodo,
+    po: '',
+    nom: row.nombre || periodo,
+    proyNombre: '',  // se resuelve desde proyectos[] si es necesario
+    proyectoId: row.proyecto_id || null,
+    importeTotal: row.importe_total || null,
+    estado: row.factura_id ? 'facturado' : (row.estado || 'borrador'),
+    facturaRef: null,  // se resuelve si es necesario
+    regIds: [],  // na_informes no almacena reg_ids directamente
     creadoEn: row.creado_en,
-    tipo: row.tipo || 'actividad'
+    tipo: 'actividad'
   };
 }
 
@@ -427,16 +439,16 @@ async function saveFacturaV3(fac) {
     tipo: facRow.tipo || 'Factura',
     estado: facRow.estado || 'Borrador',
     fecha: facRow.fecha,
-    fecha_vencimiento: facRow.fechaVto || null,
+    fecha_vto: facRow.fechaVto || null,
     cliente_id: facRow.clienteId || null,
-    cliente_nombre: facRow.clienteNombre || '',
     serie_id: facRow.serieId || null,
-    concepto: facRow.concepto || '',
-    po: facRow.po || null,
-    notas: facRow.notas || '',
+    observaciones: facRow.concepto || '',
+    po_ref: facRow.po || null,
+    metodo_pago: facRow.metodoPago || 'Transferencia bancaria',
     creado_en: facRow.creadoEn || new Date().toISOString(),
     base_imponible: facRow.baseImponible != null ? facRow.baseImponible : null,
-    total_iva: facRow.totalIva != null ? facRow.totalIva : null,
+    iva_pct: facRow.ivaPct || 21,
+    iva_amt: facRow.totalIva != null ? facRow.totalIva : null,
     total: facRow.total != null ? facRow.total : null
   };
   await dbFacturas.upsert(row);
@@ -446,11 +458,11 @@ async function saveFacturaV3(fac) {
     const linRows = lineas.map((l, i) => ({
       id: l.id || (fac.id + '_l' + i),
       factura_id: fac.id,
-      descripcion: l.concepto || l.descripcion || '',
+      concepto: l.concepto || l.descripcion || '',
       uds: parseFloat(l.uds) || 1,
-      precio_unitario: parseFloat(l.precio) || 0,
-      descuento: parseFloat(l.descuento) || 0,
-      iva: parseFloat(l.iva) || 21,
+      precio: parseFloat(l.precio) || 0,
+      descuento_pct: parseFloat(l.descuento) || 0,
+      iva_pct: parseFloat(l.iva) || 21,
       es_cabecera: !!l.esCabecera,
       orden: i
     }));
@@ -465,18 +477,23 @@ async function saveFacturaV3(fac) {
 async function saveOfertaV3(of) {
   const row = {
     id: of.id,
-    numero: of.numero || '',
+    codigo: of.numero || '',
     asunto: of.asunto || '',
     estado: of.estado || 'Borrador',
-    fecha: of.fecha,
     cliente_id: of.clienteId || null,
-    estacion: of.estacion || '',
-    zona: of.zona || '',
-    responsable: of.responsable || '',
-    lineas: JSON.stringify(of.lineas || []),
-    version: of.version || 1,
-    referencia: of.ref || '',
-    notas: of.notas || '',
+    po: of.po || null,
+    importe_total: of.importeTotal || null,
+    metadatos: {
+      numero: of.numero || '',
+      fecha: of.fecha || '',
+      estacion: of.estacion || '',
+      zona: of.zona || '',
+      responsable: of.responsable || '',
+      lineas: of.lineas || [],
+      version: of.version || 1,
+      ref: of.ref || '',
+      notas: of.notas || ''
+    },
     creado_en: of.creadoEn || new Date().toISOString()
   };
   await dbOfertas.upsert(row);
@@ -3615,13 +3632,17 @@ function App() {
         const usrsV3 = await dbUsuarios.getAll() || [];
         // Construir tecnicoIdMap (nombre_login → uuid) para uso en _regToRow
         const tecIdMap = {};
-        usrsV3.forEach(u => { tecIdMap[u.login] = u.id; tecIdMap[u.nombre] = u.id; });
+        usrsV3.forEach(u => { tecIdMap[u.nombre] = u.id; });
         window._naTecnicoIdMap = tecIdMap;
+        // Mapa id→nombre para resolver tecnico_id en registros
+        const tecNomMap = {};
+        usrsV3.forEach(u => { tecNomMap[u.id] = u.nombre; });
+        window._naTecnicoNameMap = tecNomMap;
 
         // Mapear a formato interno {login: {nombre, rol, hash, zonas}}
         const usrsMap = {};
         usrsV3.forEach(u => {
-          usrsMap[u.login] = {
+          const loginKey = u.nombre; usrsMap[loginKey] = {
             nombre: u.nombre,
             rol: u.rol,
             hash: u.password_hash,
@@ -3658,13 +3679,17 @@ function App() {
         ]);
 
         // 3. Proyectos
+        // Mapas id→nombre para resolver estacion_id y responsable_bp_id
+        // Se resuelven después de cargar estaciones y responsables
         const proyectosV3 = (projRows || []).map(r => ({
           id: r.id,
           nombre: r.nombre || '',
           po: r.po || '',
           zona: r.zona || '',
-          responsableBP: r.responsable_bp || '',
-          estacion: r.estacion || '',
+          responsableBP: '',  // se resuelve tras cargar responsables
+          responsableBPId: r.responsable_bp_id || null,
+          estacion: '',       // se resuelve tras cargar estaciones
+          estacionId: r.estacion_id || null,
           clienteId: r.cliente_id || '',
           activo: r.activo !== false,
           creadoEn: r.creado_en
@@ -3698,12 +3723,12 @@ function App() {
         setDeletedHistIds(new Set());
 
         // 5. Responsables
-        const respsV3 = (respRows || []).map(r => ({ nombre: r.nombre, sexo: r.sexo || 'M', id: r.id }));
+        const respsV3 = (respRows || []).map(r => ({ nombre: r.nombre, sexo: 'M', id: r.id }));
         const REQUIRED_RESPS = [{ nombre: 'Concepción Gutierrez', sexo: 'F' }, { nombre: 'Daniel Romero', sexo: 'M' }];
         setResps(respsV3.length ? respsV3 : REQUIRED_RESPS);
 
         // 6. Histórico (informes de actividad — tipo != 'hsse')
-        const histActividad = (histRows || []).filter(r => r.tipo !== 'hsse');
+        const histActividad = histRows || [];  // na_informes no tiene tipo, todos son de actividad
         setHistorico(histActividad.map(_rowToInforme));
 
         // 6b. Histórico HSSE
@@ -3726,24 +3751,24 @@ function App() {
             creadoEn: r.creado_en || ''
           };
         });
-        setHsseHist(hsseHistV3);
+        setHsseHist([]);  // na_informes no tiene campo tipo — hsseHist se mantiene vacío hasta schema update
 
         // 7. Clientes
         const clientesV3 = (clienteRows || []).map(r => ({
           id: r.id,
           nombre: r.nombre || '',
           nif: r.nif || '',
-          codigoRef: r.codigo_ref || '',
-          direccion: r.direccion || '',
-          poblacion: r.poblacion || '',
-          iban: r.iban || '',
+          codigoRef: r.codigo || '',
+          direccion: (r.direccion_linea1 || '') + (r.direccion_linea2 ? ', ' + r.direccion_linea2 : ''),
+          poblacion: (r.cp ? r.cp + ' ' : '') + (r.ciudad || ''),
+          iban: '',
           emailFact: r.email_facturacion || '',
-          diasVto: r.dias_vencimiento || 30,
-          metodoPago: r.metodo_pago || 'Transferencia bancaria',
-          serieDefecto: r.serie_defecto || 'DR',
-          ivaDefecto: r.iva_defecto || 21,
-          conceptoCliente: r.concepto_cliente || '',
-          formaPago: r.forma_pago || 'Según contrato'
+          diasVto: r.dias_vto_defecto || 30,
+          metodoPago: r.metodo_pago_defecto || 'Transferencia bancaria',
+          serieDefecto: 'DR',
+          ivaDefecto: 21,
+          conceptoCliente: '',
+          formaPago: 'Según contrato'
         }));
         setClientes(clientesV3.length ? clientesV3 : CLIENTES_DEF);
 
@@ -3755,9 +3780,9 @@ function App() {
           contFact: r.cont_factura || 0,
           contSupl: r.cont_suplido || 0,
           contAbon: r.cont_abono || 0,
-          ultimaFechaFact: r.ultima_fecha_fact || '',
-          ultimaFechaSupl: r.ultima_fecha_supl || '',
-          ultimaFechaAbon: r.ultima_fecha_abon || ''
+          ultimaFechaFact: '',
+          ultimaFechaSupl: '',
+          ultimaFechaAbon: ''
         }));
         setSeries(seriesV3.length ? seriesV3 : SERIES_DEF);
 
@@ -3772,11 +3797,11 @@ function App() {
             if (!linFactMap[l.factura_id]) linFactMap[l.factura_id] = [];
             linFactMap[l.factura_id].push({
               id: l.id,
-              concepto: l.descripcion || '',
+              concepto: l.concepto || '',
               uds: l.uds || 1,
-              precio: l.precio_unitario || 0,
-              descuento: l.descuento || 0,
-              iva: l.iva || 21,
+              precio: l.precio || 0,
+              descuento: l.descuento_pct || 0,
+              iva: l.iva_pct || 21,
               esCabecera: !!l.es_cabecera
             });
           });
@@ -3785,9 +3810,24 @@ function App() {
           setFacturas([]);
         }
 
-        // 10. Estaciones
+        // 10. Estaciones — guardar como strings de nombre (para compatibilidad UI)
+        // y también mapa id→nombre para resolver estacion_id en proyectos
+        const estNomMap = {};
+        (estRows || []).forEach(r => { estNomMap[r.id] = r.nombre || r.id; });
+        window._naEstNomMap = estNomMap;
         const estV3 = (estRows || []).map(r => r.nombre || r.id);
         setEstaciones(estV3);
+
+        // 10b. Resolver nombres de estación y responsable en proyectos
+        const respNomMap = {};
+        (respRows || []).forEach(r => { respNomMap[r.id] = r.nombre || ''; });
+        window._naRespNomMap = respNomMap;
+        const proyectosResolved = proyectosV3.map(p => ({
+          ...p,
+          estacion: estNomMap[p.estacionId] || p.estacion || '',
+          responsableBP: respNomMap[p.responsableBPId] || p.responsableBP || ''
+        }));
+        setProyectos(proyectosResolved);
 
         // 11. Ofertas
         setOfertas((ofertaRows || []).map(_rowToOferta));
@@ -3862,8 +3902,10 @@ function App() {
         try {
           const rows = proyectos.map(p => ({
             id: p.id, nombre: p.nombre || '', po: p.po || null,
-            zona: p.zona || null, responsable_bp: p.responsableBP || null,
-            estacion: p.estacion || null, cliente_id: p.clienteId || null,
+            zona: p.zona || null,
+            responsable_bp_id: p.responsableBPId || null,
+            estacion_id: p.estacionId || null,
+            cliente_id: p.clienteId || null,
             activo: p.activo !== false, creado_en: p.creadoEn || new Date().toISOString()
           }));
           await _sb('/rest/v1/na_proyectos', { method: 'POST', body: JSON.stringify(rows), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } });
@@ -3893,7 +3935,7 @@ function App() {
       clearTimeout(window._bkResps);
       window._bkResps = setTimeout(async () => {
         try {
-          const rows = resps.filter(r => r.id).map(r => ({ id: r.id, nombre: r.nombre, sexo: r.sexo || 'M' }));
+          const rows = resps.filter(r => r.id).map(r => ({ id: r.id, nombre: r.nombre }));
           if (rows.length) await _sb('/rest/v1/na_responsables', { method: 'POST', body: JSON.stringify(rows), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } });
         } catch(e) { console.error('[NorAcuaV3] persistencia resps:', e); }
       }, 1000);
@@ -3909,9 +3951,12 @@ function App() {
         try {
           const rows = historico.map(inf => ({
             id: inf.id, html: inf.html || '', periodo: inf.periodo || '',
-            po: JSON.stringify({ nom: inf.nom, proyNombre: inf.proyNombre, proyectoId: inf.proyectoId, importeTotal: inf.importeTotal, estado: inf.estado || 'borrador', facturaRef: inf.facturaRef || null, po: inf.po || null, periodo: inf.periodo }),
-            reg_ids: JSON.stringify(inf.regIds || []),
-            creado_en: inf.creadoEn || new Date().toISOString(), tipo: inf.tipo || 'actividad'
+            nombre: inf.nom || inf.periodo || '',
+            proyecto_id: inf.proyectoId || null,
+            importe_total: inf.importeTotal || null,
+            estado: inf.estado || 'borrador',
+            html_cache: inf.html || '',
+            creado_en: inf.creadoEn || new Date().toISOString()
           }));
           for (let i = 0; i < rows.length; i += 50) {
             await _sb('/rest/v1/na_informes', { method: 'POST', body: JSON.stringify(rows.slice(i, i+50)), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } });
@@ -3930,12 +3975,11 @@ function App() {
         try {
           const rows = clientes.map(c => ({
             id: c.id, nombre: c.nombre || '', nif: c.nif || null,
-            codigo_ref: c.codigoRef || null, direccion: c.direccion || null,
-            poblacion: c.poblacion || null, iban: c.iban || null,
-            email_facturacion: c.emailFact || null, dias_vencimiento: c.diasVto || 30,
-            metodo_pago: c.metodoPago || 'Transferencia bancaria',
-            serie_defecto: c.serieDefecto || 'DR', iva_defecto: c.ivaDefecto || 21,
-            concepto_cliente: c.conceptoCliente || null, forma_pago: c.formaPago || 'Según contrato'
+            codigo: c.codigoRef || null,
+            direccion_linea1: c.direccion || null,
+            email_facturacion: c.emailFact || null,
+            dias_vto_defecto: c.diasVto || 30,
+            metodo_pago_defecto: c.metodoPago || 'Transferencia bancaria'
           }));
           await _sb('/rest/v1/na_clientes', { method: 'POST', body: JSON.stringify(rows), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } });
         } catch(e) { console.error('[NorAcuaV3] persistencia clientes:', e); }
@@ -3950,10 +3994,7 @@ function App() {
         try {
           const rows = series.map(s => ({
             id: s.id, codigo: s.codigo, nombre: s.nombre || '',
-            cont_factura: s.contFact || 0, cont_suplido: s.contSupl || 0, cont_abono: s.contAbon || 0,
-            ultima_fecha_fact: s.ultimaFechaFact || null,
-            ultima_fecha_supl: s.ultimaFechaSupl || null,
-            ultima_fecha_abon: s.ultimaFechaAbon || null
+            cont_factura: s.contFact || 0, cont_suplido: s.contSupl || 0, cont_abono: s.contAbon || 0
           }));
           await _sb('/rest/v1/na_series', { method: 'POST', body: JSON.stringify(rows), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } });
         } catch(e) { console.error('[NorAcuaV3] persistencia series:', e); }
@@ -3969,11 +4010,14 @@ function App() {
           const factRows = facturas.map(f => ({
             id: f.id, numero: f.numero || '', tipo: f.tipo || 'Factura',
             estado: f.estado || 'Borrador', fecha: f.fecha,
-            fecha_vencimiento: f.fechaVto || null, cliente_id: f.clienteId || null,
-            cliente_nombre: f.clienteNombre || '', serie_id: f.serieId || null,
-            concepto: f.concepto || '', po: f.po || null, notas: f.notas || '',
+            fecha_vto: f.fechaVto || null, cliente_id: f.clienteId || null,
+            serie_id: f.serieId || null,
+            observaciones: f.concepto || '', po_ref: f.po || null,
+            metodo_pago: f.metodoPago || 'Transferencia bancaria',
             creado_en: f.creadoEn || new Date().toISOString(),
-            base_imponible: f.baseImponible ?? null, total_iva: f.totalIva ?? null, total: f.total ?? null
+            base_imponible: f.baseImponible ?? null,
+            iva_pct: f.ivaPct || 21,
+            iva_amt: f.totalIva ?? null, total: f.total ?? null
           }));
           for (let i = 0; i < factRows.length; i += 50) {
             await _sb('/rest/v1/na_facturas', { method: 'POST', body: JSON.stringify(factRows.slice(i, i+50)), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } });
@@ -3983,9 +4027,9 @@ function App() {
             if (!Array.isArray(f.lineas)) return;
             f.lineas.forEach((l, i) => linRows.push({
               id: l.id || uuid(), factura_id: f.id,
-              descripcion: l.concepto || l.descripcion || '',
-              uds: parseFloat(l.uds) || 1, precio_unitario: parseFloat(l.precio) || 0,
-              descuento: parseFloat(l.descuento) || 0, iva: parseFloat(l.iva) || 21,
+              concepto: l.concepto || l.descripcion || '',
+              uds: parseFloat(l.uds) || 1, precio: parseFloat(l.precio) || 0,
+              descuento_pct: parseFloat(l.descuento) || 0, iva_pct: parseFloat(l.iva) || 21,
               es_cabecera: !!l.esCabecera, orden: i
             }));
           });
@@ -4015,12 +4059,11 @@ function App() {
       window._bkOfer = setTimeout(async () => {
         try {
           const rows = ofertas.map(o => ({
-            id: o.id, numero: o.numero || '', asunto: o.asunto || '',
-            estado: o.estado || 'Borrador', fecha: o.fecha,
-            cliente_id: o.clienteId || null, estacion: o.estacion || '',
-            zona: o.zona || '', responsable: o.responsable || '',
-            lineas: JSON.stringify(o.lineas || []), version: o.version || 1,
-            referencia: o.ref || '', notas: o.notas || '',
+            id: o.id, codigo: o.numero || '', asunto: o.asunto || '',
+            estado: o.estado || 'Borrador',
+            cliente_id: o.clienteId || null, po: o.po || null,
+            importe_total: o.importeTotal || null,
+            metadatos: { numero: o.numero||'', fecha: o.fecha||'', estacion: o.estacion||'', zona: o.zona||'', responsable: o.responsable||'', lineas: o.lineas||[], version: o.version||1, ref: o.ref||'', notas: o.notas||'' },
             creado_en: o.creadoEn || new Date().toISOString()
           }));
           for (let i = 0; i < rows.length; i += 100) {
@@ -4282,8 +4325,9 @@ function App() {
     setProyectos(p => [...p, {
       ...fPr,
       id: newId,
-      creadoEn: new Date().toISOString(),
-      creadoPor: user?.nombre || "admin"
+      estacionId: null,
+      responsableBPId: null,
+      creadoEn: new Date().toISOString()
     }]);
     if (fPr.estacion && !estaciones.includes(fPr.estacion)) setEstaciones(e => [...e, fPr.estacion].sort());
     setFPr(ep);
@@ -4524,12 +4568,12 @@ function App() {
     });
     dbInformes.upsert({
       id: entry.id,
-      html: html || '',
-      periodo: periodo || '',
-      po: metaJson,
-      reg_ids: JSON.stringify(regIds || []),
-      creado_en: entry.creadoEn,
-      tipo: tipo || 'actividad'
+      nombre: nom || '',
+      proyecto_id: proyectoId || null,
+      importe_total: importeTotal || null,
+      estado: 'borrador',
+      html_cache: html || '',
+      creado_en: entry.creadoEn
     }).catch(e => console.error('[NorAcuaV3] guardarHist:', e));
     setHistorico(prev => [entry, ...prev.slice(0, 99)]);
     return entry;
@@ -4779,10 +4823,13 @@ function App() {
           const updated = { ...x, estado: "facturado", facturaRef: factNum };
           // v3: persistir cambio de estado en BD inmediatamente
           dbInformes.upsert({
-            id: updated.id, html: updated.html || '', periodo: updated.periodo || '',
-            po: JSON.stringify({ nom: updated.nom, proyNombre: updated.proyNombre, proyectoId: updated.proyectoId, importeTotal: updated.importeTotal, estado: 'facturado', facturaRef: factNum, po: updated.po || null, periodo: updated.periodo }),
-            reg_ids: JSON.stringify(updated.regIds || []),
-            creado_en: updated.creadoEn || new Date().toISOString(), tipo: updated.tipo || 'actividad'
+            id: updated.id,
+            nombre: updated.nom || '',
+            proyecto_id: updated.proyectoId || null,
+            importe_total: updated.importeTotal || null,
+            estado: 'facturado',
+            html_cache: updated.html || '',
+            creado_en: updated.creadoEn || new Date().toISOString()
           }).catch(e => console.error('[NorAcuaV3] update informe facturado:', e));
           return updated;
         }));
