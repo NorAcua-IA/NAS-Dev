@@ -3519,7 +3519,26 @@ function App() {
   const [assigningOfertaGk, setAssigningOfertaGk] = useState(null);
   const [assigningOfertaSel, setAssigningOfertaSel] = useState([]);
   const toggleCard = id => setCollapsedIds(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  // Estados exclusivos del técnico para "Certificación" (view===revision) y "Archivadas" (view===archivadas)
+  const [certCollapsed, setCertCollapsed] = useState(new Set());
+  const toggleCert = id => setCertCollapsed(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const [fCertEstado, setFCertEstado] = useState("");
+  const [fCertProy, setFCertProy] = useState("");
+  const [fCertSite, setFCertSite] = useState("");
+  const [fCertDesde, setFCertDesde] = useState("");
+  const [fCertHasta, setFCertHasta] = useState("");
+  const [fArchEstado, setFArchEstado] = useState("");
+  const [fArchProy, setFArchProy] = useState("");
+  const [fArchSite, setFArchSite] = useState("");
+  const [fArchTrab, setFArchTrab] = useState("");
+  const [archCollapsedMonths, setArchCollapsedMonths] = useState(new Set());
+  const toggleArchMonth = m => setArchCollapsedMonths(s => { const n = new Set(s); n.has(m) ? n.delete(m) : n.add(m); return n; });
+  const [archExpandedIds, setArchExpandedIds] = useState(new Set());
+  const toggleArchCard = id => setArchExpandedIds(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const [collapsedHsseMeses, setCollapsedHsseMeses] = useState({});
+  // Estado HSSE "Mis supervisiones" (vista exclusiva del técnico)
+  const [hsseMisCollapsed, setHsseMisCollapsed] = useState(new Set());
+  const toggleHsseMes = m => setHsseMisCollapsed(s => { const n = new Set(s); n.has(m) ? n.delete(m) : n.add(m); return n; });
   const [collapsedFactMeses, setCollapsedFactMeses] = useState({});
   const [collapsedOfGrupos, setCollapsedOfGrupos] = useState({});
   const [fAdmArchEstado, setFAdmArchEstado] = useState("");
@@ -5530,7 +5549,11 @@ function App() {
       }
     }, hashesReady ? "Acceder" : "Preparando...")));
   }
-  const navHsse = [{k:"registro",l:"Registro",i:P.clip},{k:"revision",l:"Revisión",i:P.eye},{k:"informes",l:"Informes",i:P.file},{k:"config",l:"Config",i:P.cog}];
+  // navHsse: admin ve Registro/Revisión/Informes/Config; técnico solo Registro y Mis supervisiones (con contador de nuevas aprobadas)
+  var _hsseNuevasAprob = hsseSups.filter(function(s){var names=new Set([user&&user.nombre,user&&user.id].filter(Boolean));return (names.has(s.supervisor)||names.has(s.creadoPor))&&s.estado==="aprobado"&&!s._vistaTec;}).length;
+  const navHsse = isAdmin
+    ? [{k:"registro",l:"Registro",i:P.clip},{k:"revision",l:"Revisión",i:P.eye},{k:"informes",l:"Informes",i:P.file},{k:"config",l:"Config",i:P.cog}]
+    : [{k:"registro",l:"Registro",i:P.clip},{k:"revision",l:_hsseNuevasAprob>0?"Mis supervisiones ("+_hsseNuevasAprob+")":"Mis supervisiones",i:P.eye}];
   const curNav = modulo === "dashboard" ? [] : modulo === "trabajos" ? navTrabajos : modulo === "facturacion" ? navFact : modulo === "hsse" ? navHsse : isAdmin ? navOfertas : navOfertasTec;
   const curView = modulo === "trabajos" ? view : modulo === "facturacion" ? viewF : modulo === "hsse" ? viewH : viewO;
   const setCurView = v => {
@@ -6792,6 +6815,173 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
     );
   })()
 )
+, view === "archivadas" && !isAdmin && /*#__PURE__*/React.createElement(React.Fragment, null,
+  /*#__PURE__*/React.createElement("h2", { style: { fontSize: 17, fontWeight: 700, marginBottom: 4 } }, "Archivadas"),
+  /*#__PURE__*/React.createElement("p", { style: { fontSize: 12, color: C.muted, marginBottom: 10 } }, "Actividades finalizadas — agrupadas por mes"),
+  /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 } },
+    /*#__PURE__*/React.createElement("select", {
+      value: fArchEstado, onChange: e => setFArchEstado(e.target.value),
+      style: { padding: "5px 8px", border: "1px solid " + C.border, borderRadius: 5, fontSize: 12, fontFamily: "inherit", background: C.inputBg }
+    },
+      /*#__PURE__*/React.createElement("option", { value: "" }, "Todos los estados"),
+      /*#__PURE__*/React.createElement("option", { value: "aprobado" }, "✅ Aprobadas (normal)"),
+      /*#__PURE__*/React.createElement("option", { value: "certificado" }, "🏁 Certificadas"),
+      /*#__PURE__*/React.createElement("option", { value: "certif_oferta" }, "🗂 Certif. Oferta")
+    ),
+    /*#__PURE__*/React.createElement("select", {
+      value: fArchProy, onChange: e => setFArchProy(e.target.value),
+      style: { padding: "5px 8px", border: "1px solid " + C.border, borderRadius: 5, fontSize: 12, fontFamily: "inherit", background: C.inputBg }
+    },
+      /*#__PURE__*/React.createElement("option", { value: "" }, "Todos los proyectos"),
+      [...new Set(registros.map(r => r.proyectoId).filter(Boolean))].map(pid => {
+        const p = gP(pid);
+        return p ? /*#__PURE__*/React.createElement("option", { key: pid, value: pid }, p.nombre) : null;
+      })
+    ),
+    /*#__PURE__*/React.createElement("select", {
+      value: fArchSite, onChange: e => setFArchSite(e.target.value),
+      style: { padding: "5px 8px", border: "1px solid " + C.border, borderRadius: 5, fontSize: 12, fontFamily: "inherit", background: C.inputBg }
+    },
+      /*#__PURE__*/React.createElement("option", { value: "" }, "Todas las ES"),
+      [...new Set(registros.map(r => gP(r.proyectoId)?.estacion).filter(Boolean))].map(es =>
+        /*#__PURE__*/React.createElement("option", { key: es, value: es }, es)
+      )
+    ),
+    isAdmin && /*#__PURE__*/React.createElement("select", {
+      value: fArchTrab, onChange: e => setFArchTrab(e.target.value),
+      style: { padding: "5px 8px", border: "1px solid " + C.border, borderRadius: 5, fontSize: 12, fontFamily: "inherit", background: C.inputBg }
+    },
+      /*#__PURE__*/React.createElement("option", { value: "" }, "Todos los técnicos"),
+      trabs.map(t => /*#__PURE__*/React.createElement("option", { key: t, value: t }, t))
+    ),
+    (fArchEstado || fArchProy || fArchSite || fArchTrab) && /*#__PURE__*/React.createElement("button", {
+      onClick: () => { setFArchEstado(""); setFArchProy(""); setFArchSite(""); setFArchTrab(""); },
+      style: { padding: "4px 10px", fontSize: 11, background: "transparent", border: "1px solid " + C.border, borderRadius: 5, cursor: "pointer", color: C.muted, fontFamily: "inherit" }
+    }, "✕ Limpiar")
+  ),
+  (() => {
+    const _abbrMap = {"JSF":"Jordi Santos","YLS":"Yennyfer Lemus","DRF":"Daniel","ILS":"Ignacio López","CGR":"Carlos García"};
+    const _userNames = new Set([user?.nombre, user?.id, ...Object.entries(_abbrMap).filter(([,v])=>v===user?.nombre).map(([k])=>k)].filter(Boolean));
+    let archivadas = registros.filter(r => {
+      if (!isAdmin && !_userNames.has(r.trabajador) && !_userNames.has(r.creadoPor)) return false;
+      const lineas = r.lineasGrupo || [];
+      const allAprob = lineas.length > 0 && lineas.every(l => l.certifAprobada);
+      const allCertifOferta = lineas.length > 0 && lineas.every(l => l.certifOferta);
+      if (!(r.estadoCertif === "finalizado" || allAprob || r.estado === "aprobado" || r.estado === "certif_oferta" || allCertifOferta)) return false;
+      // Filtros
+      if (fArchEstado) {
+        if (fArchEstado === "aprobado" && r.estado !== "aprobado") return false;
+        if (fArchEstado === "certificado" && !(r.estadoCertif === "finalizado" || allAprob)) return false;
+        if (fArchEstado === "certif_oferta" && r.estado !== "certif_oferta") return false;
+      }
+      if (fArchProy && r.proyectoId !== fArchProy) return false;
+      if (fArchSite && gP(r.proyectoId)?.estacion !== fArchSite) return false;
+      if (fArchTrab && r.trabajador !== fArchTrab && r.creadoPor !== fArchTrab) return false;
+      return true;
+    }).sort((a,b) => (b.fecha||"").localeCompare(a.fecha||""));
+    if (!archivadas.length) return /*#__PURE__*/React.createElement("div", {
+      style: { textAlign: "center", color: C.muted, padding: "40px 0", fontSize: 13 }
+    }, "No hay actividades archivadas con estos filtros");
+    // Agrupar por mes-año
+    const meses = {};
+    const mesesNombres = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+    archivadas.forEach(r => {
+      const d = r.fecha || "";
+      const key = d.slice(0,7); // YYYY-MM
+      if (!meses[key]) meses[key] = [];
+      meses[key].push(r);
+    });
+    const mesesOrdenados = Object.keys(meses).sort((a,b) => b.localeCompare(a));
+    return /*#__PURE__*/React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } },
+      mesesOrdenados.map(mesKey => {
+        const [anyo, mes] = mesKey.split("-");
+        const label = mesesNombres[parseInt(mes,10)-1] + " " + anyo;
+        const regs = meses[mesKey];
+        const isCollapsed = archCollapsedMonths.has(mesKey);
+        return /*#__PURE__*/React.createElement("div", { key: mesKey, style: { borderRadius: 8, border: "1px solid " + C.border, overflow: "hidden", marginBottom: 4 } },
+          /*#__PURE__*/React.createElement("div", {
+            onClick: () => toggleArchMonth(mesKey),
+            style: { display: "flex", justifyContent: "space-between", alignItems: "center",
+              padding: "10px 14px", cursor: "pointer", background: isCollapsed ? C.card : "#1c3e5e",
+              borderBottom: isCollapsed ? "none" : "1px solid " + C.border }
+          },
+            /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 10, alignItems: "center" } },
+              /*#__PURE__*/React.createElement("span", { style: { fontWeight: 700, fontSize: 13, color: isCollapsed ? C.text : "#fff" } }, label),
+              /*#__PURE__*/React.createElement("span", { style: { fontSize: 11, color: isCollapsed ? C.muted : "rgba(255,255,255,0.7)", background: isCollapsed ? C.border : "rgba(255,255,255,0.15)", padding: "1px 8px", borderRadius: 10 } }, regs.length + " actividades"),
+            ),
+            /*#__PURE__*/React.createElement("span", { style: { fontSize: 11, color: isCollapsed ? C.muted : "#fff" } }, isCollapsed ? "▼ Expandir" : "▲ Colapsar")
+          ),
+          !isCollapsed && /*#__PURE__*/React.createElement("div", { style: { padding: "8px 10px", display: "flex", flexDirection: "column", gap: 6 } },
+            regs.map(r => {
+              const proy = gP(r.proyectoId);
+              const lineas = r.lineasGrupo || [];
+              const _nItems = r.esGrupo ? lineas.length : 1;
+              const _title = r.esGrupo ? ("GRUPO · " + _nItems + " actividades") : (gC(r.conceptoId)?.nombre || "—");
+              const esOfertadaArch = !!r.ofertaCodigo || r.estado === "certif_oferta";
+              const _hdr = regHdrStyle(r.estado);
+              const isExpanded = archExpandedIds.has(r.id);
+              return /*#__PURE__*/React.createElement("div", {
+                key: r.id,
+                style: { ...rowSt, padding: 0, overflow: "hidden", border: "1px solid " + _hdr.border, marginBottom: 0 }
+              },
+                /*#__PURE__*/React.createElement("div", {
+                  onClick: () => toggleArchCard(r.id),
+                  style: { display: "flex", justifyContent: "space-between", alignItems: "center",
+                    padding: "7px 12px", cursor: "pointer", background: _hdr.bg }
+                },
+                  /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap", flex: 1 } },
+                    /*#__PURE__*/React.createElement("span", { style: { fontWeight: 700, fontSize: 12 } }, _title),
+                    proy && /*#__PURE__*/React.createElement("span", { style: { fontSize: 11, color: C.textSec, fontWeight: 600 } }, "· " + (proy.nombre || proy.po || "")),
+                    proy?.estacion && /*#__PURE__*/React.createElement("span", { style: { fontSize: 11, color: C.primary } }, "· " + proy.estacion),
+                    /*#__PURE__*/React.createElement("span", { style: { fontSize: 11, color: C.muted } }, "· " + fmtD(r.fecha)),
+                    r.esGrupo && /*#__PURE__*/React.createElement("span", { style: { fontSize: 10, color: C.textSec } }, _nItems + " ítems"),
+                    esOfertadaArch && r.ofertaCodigo && /*#__PURE__*/React.createElement("span", {
+                      style: { fontSize: 10, fontWeight: 700, color: "#7c3aed", background: "#f5f3ff", padding: "1px 6px", borderRadius: 4, border: "1px solid #c4b5fd" }
+                    }, "🗂 " + r.ofertaCodigo),
+                    !esOfertadaArch && /*#__PURE__*/React.createElement("span", {
+                      style: { fontSize: 10, fontWeight: 700, color: "#065f46", background: "#a7f3d0", padding: "1px 6px", borderRadius: 4 }
+                    }, "✓ Certificada"),
+                    esOfertadaArch && /*#__PURE__*/React.createElement("span", {
+                      style: { fontSize: 10, fontWeight: 700, color: "#065f46", background: "#a7f3d0", padding: "1px 6px", borderRadius: 4 }
+                    }, "✓ Certif. Oferta")
+                  ),
+                  /*#__PURE__*/React.createElement("span", { style: { fontSize: 10, color: C.muted } }, isExpanded ? "▲" : "▼")
+                ),
+                isExpanded && /*#__PURE__*/React.createElement("div", { style: { padding: "8px 12px", borderTop: "1px solid " + _hdr.border } },
+                  r.esGrupo
+                    ? lineas.map((l, i) => {
+                        const conc = gC(l.conceptoId);
+                        return /*#__PURE__*/React.createElement("div", {
+                          key: l.id || i,
+                          style: { display: "flex", gap: 8, alignItems: "center", padding: "4px 8px", borderRadius: 4, fontSize: 11, marginBottom: 3, background: C.cardL, border: "1px solid " + C.border }
+                        },
+                          /*#__PURE__*/React.createElement("span", { style: { color: C.success, flexShrink: 0 } }, "✓"),
+                          /*#__PURE__*/React.createElement("div", { style: { flex: 1 } },
+                            /*#__PURE__*/React.createElement("span", null, conc?.nombre || "—"),
+                            l.observaciones && /*#__PURE__*/React.createElement("div", { style: { fontSize: 10, color: C.muted, fontStyle: "italic", marginTop: 1 } }, l.observaciones)
+                          ),
+                          /*#__PURE__*/React.createElement("span", { style: { color: C.muted, whiteSpace: "nowrap" } },
+                            (l.cantCertifOferta ?? l.cantCertif ?? l.cantidad) + " uds"
+                          )
+                        );
+                      })
+                    : /*#__PURE__*/React.createElement("div", {
+                        style: { display: "flex", gap: 8, alignItems: "center", padding: "4px 8px", borderRadius: 4, fontSize: 11, background: C.cardL, border: "1px solid " + C.border }
+                      },
+                        /*#__PURE__*/React.createElement("span", { style: { color: C.success } }, "✓"),
+                        /*#__PURE__*/React.createElement("span", { style: { flex: 1 } }, gC(r.conceptoId)?.nombre || "—"),
+                        /*#__PURE__*/React.createElement("span", { style: { color: C.muted } }, (r.cantidad || 1) + " uds")
+                      )
+                )
+              );
+            })
+          )
+        );
+      })
+    );
+  })()
+)
+
 , view === "informes" && isAdmin && (() => {
     // Auto-sync: if a facturado informe has regIds not yet marked → mark them
     historico.filter(inf => inf.estado === "facturado" && (inf.regIds||[]).length > 0).forEach(inf => {
@@ -12052,8 +12242,8 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
       })
     ),
     /* REGISTRO */
-    viewH==="registro" && React.createElement(React.Fragment, null,
-      React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}},
+    viewH==="registro" && (isAdmin ? React.createElement(React.Fragment, null,
+          React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}},
         React.createElement("h2",{style:{fontSize:17,fontWeight:700}},"Supervisiones HSSE"),
         React.createElement("button",{onClick:function(){setFHs({site:"",tipoActividad:"",pctAuditoria:"",obraConSupervision:"",fecha:today(),horas:"",supervisor:"",encargo:"",zona:"",incidencias:"No",motivoSupervision:"",empresa:"",comentarios:""});setMHsseReg(true);},style:{background:"#00c8c8",color:"#fff",border:"none",borderRadius:6,padding:"6px 14px",cursor:"pointer",fontSize:12,fontWeight:600}},"\uFF0B Nueva supervisión")
       ),
@@ -12164,10 +12354,67 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
           })
         );
       })()
-    ),
+    ) : React.createElement(React.Fragment, null,
+          React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}},
+        React.createElement("h2",{style:{fontSize:17,fontWeight:700}},"Supervisiones HSSE"),
+        React.createElement("button",{
+          onClick:function(){
+            setFHs({site:"",tipoActividad:"",pctAuditoria:"",obraConSupervision:"",fecha:today(),horas:"",supervisor:user&&user.nombre||"",encargo:"",zona:"",incidencias:"No",motivoSupervision:"",empresa:"",comentarios:""});
+            setMHsseReg(true);
+          },
+          style:{background:"#00c8c8",color:"#fff",border:"none",borderRadius:6,padding:"6px 14px",cursor:"pointer",fontSize:12,fontWeight:600}
+        },"\uFF0B Nueva supervisi\u00F3n")
+      ),
+      React.createElement("div",{style:{display:"flex",gap:7,marginBottom:11,flexWrap:"wrap"}},
+        React.createElement("input",{type:"date",value:filtroHDesde,onChange:function(e){setFiltroHDesde(e.target.value);},style:{padding:"5px 9px",border:"1px solid #dde2e8",borderRadius:5,fontSize:11,fontFamily:"inherit",background:"#f9fafb"}}),
+        React.createElement("input",{type:"date",value:filtroHHasta,onChange:function(e){setFiltroHHasta(e.target.value);},style:{padding:"5px 9px",border:"1px solid #dde2e8",borderRadius:5,fontSize:11,fontFamily:"inherit",background:"#f9fafb"}})
+      ),
+      React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:8}},
+        hsseSups.filter(function(s){
+          var names=new Set([user&&user.nombre,user&&user.id].filter(Boolean));
+          if(!names.has(s.supervisor)&&!names.has(s.creadoPor))return false;
+          if(s.estado!=="pendiente")return false;
+          if(filtroHDesde&&s.fecha<filtroHDesde)return false;
+          if(filtroHHasta&&s.fecha>filtroHHasta)return false;
+          return true;
+        }).sort(function(a,b){return(b.fecha||"").localeCompare(a.fecha||"");}).map(function(s){
+          var horasVis=s.horasOrig!=null?s.horasOrig:s.horas;
+          var canEdit=s.estado==="pendiente";
+          return React.createElement("div",{key:s.id,style:{background:"#fff",borderRadius:10,border:"1px solid #dde2e8",padding:"10px 14px"}},
+            React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}},
+              React.createElement("div",{style:{flex:1}},
+                React.createElement("div",{style:{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:3}},
+                  React.createElement("span",{style:{fontWeight:700,fontSize:13}},s.site||"Sin site"),
+                  React.createElement("span",{style:{fontSize:11,color:"#8a9199"}},"·"),
+                  React.createElement("span",{style:{fontSize:12,color:"#555e66"}},s.tipoActividad||"\u2014")
+                ),
+                React.createElement("div",{style:{fontSize:11,color:"#8a9199",display:"flex",gap:8,flexWrap:"wrap"}},
+                  React.createElement("span",null,s.fecha?s.fecha.substring(8,10)+"/"+s.fecha.substring(5,7)+"/"+s.fecha.substring(0,4):"\u2014"),
+                  s.zona&&React.createElement("span",null,"\u00B7 "+s.zona),
+                  React.createElement("span",null,"\u00B7 "+horasVis+"h"),
+                  s.incidencias==="S\u00ED"&&React.createElement("span",{style:{color:"#d03030",fontWeight:600}},"\u26A0 Incidencia")
+                )
+              ),
+              canEdit&&React.createElement("div",{style:{display:"flex",gap:4}},
+                React.createElement("button",{onClick:function(){setMHsseEdit(Object.assign({},s,{horas:s.horasOrig!=null?s.horasOrig:s.horas}));},style:{background:"transparent",border:"1px solid #dde2e8",borderRadius:5,padding:"3px 8px",cursor:"pointer",fontSize:11}},"\u270E Editar"),
+                React.createElement("button",{onClick:function(){if(window.confirm("\u00BFEliminar esta supervisi\u00F3n?"))setHsseSups(function(p){return p.filter(function(x){return x.id!==s.id;});});},style:{background:"transparent",border:"1px solid #d03030",borderRadius:5,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#d03030"}},"\uD83D\uDDD1")
+              )
+            ),
+            (s.motivoSupervision||s.comentarios)&&React.createElement("div",{style:{marginTop:6,paddingTop:6,borderTop:"1px solid #dde2e8",fontSize:11,color:"#555e66",display:"flex",gap:10,flexWrap:"wrap"}},
+              s.motivoSupervision&&React.createElement("span",null,"Motivo: "+s.motivoSupervision),
+              s.comentarios&&React.createElement("span",null,"Comentarios: "+s.comentarios)
+            )
+          );
+        }),
+        hsseSups.filter(function(s){
+          var names=new Set([user&&user.nombre,user&&user.id].filter(Boolean));
+          return (names.has(s.supervisor)||names.has(s.creadoPor))&&s.estado==="pendiente";
+        }).length===0&&React.createElement("div",{style:{textAlign:"center",padding:30,color:"#8a9199"}},"No tienes supervisiones pendientes de revisión.")
+      )
+    )),
     /* REVISIÓN */
-    viewH==="revision" && React.createElement(React.Fragment, null,
-      React.createElement("h2",{style:{fontSize:17,fontWeight:700,marginBottom:12}},"Revisión HSSE"),
+    viewH==="revision" && (isAdmin ? React.createElement(React.Fragment, null,
+          React.createElement("h2",{style:{fontSize:17,fontWeight:700,marginBottom:12}},"Revisión HSSE"),
       React.createElement("div",{style:{display:"flex",gap:7,marginBottom:11,flexWrap:"wrap"}},
         React.createElement("select",{value:filtroHTrab,onChange:function(e){setFiltroHTrab(e.target.value);},style:{padding:"5px 9px",border:"1px solid #dde2e8",borderRadius:5,fontSize:11,fontFamily:"inherit",background:"#f9fafb"}},
           React.createElement("option",{value:""},"Todos técnicos"),
@@ -12266,7 +12513,114 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
           })
         );
       })()
-    ),
+    ) : React.createElement(React.Fragment, null,
+          React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}},
+        React.createElement("h2",{style:{fontSize:17,fontWeight:700}},"Mis supervisiones"),
+        
+      ),
+      (function(){
+        var names=new Set([user&&user.nombre,user&&user.id].filter(Boolean));
+        var mias=hsseSups.filter(function(s){
+          return (names.has(s.supervisor)||names.has(s.creadoPor))&&s.estado!=="pendiente";
+        }).sort(function(a,b){return(b.fecha||"").localeCompare(a.fecha||"");});
+        if(mias.length===0)return React.createElement("div",{style:{textAlign:"center",padding:40,color:"#8a9199"}},"Aún no tienes supervisiones aprobadas ni rechazadas.");
+        // Agrupar por mes
+        var mesesNombres=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+        var meses={};
+        mias.forEach(function(s){
+          var key=(s.fecha||"").slice(0,7);
+          if(!meses[key])meses[key]=[];
+          meses[key].push(s);
+        });
+        var mesesOrdenados=Object.keys(meses).sort(function(a,b){return b.localeCompare(a);});
+        return React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:8}},
+          mesesOrdenados.map(function(mesKey){
+            var partes=mesKey.split("-");
+            var label=mesesNombres[parseInt(partes[1],10)-1]+" "+partes[0];
+            var regs=meses[mesKey];
+            var aprobadas=regs.filter(function(s){return s.estado==="aprobado"||s.estadoFact==="facturado";});
+            var rechazadas=regs.filter(function(s){return s.estado!=="aprobado"&&s.estadoFact!=="facturado";});
+            var horasAp=aprobadas.reduce(function(acc,s){return acc+(Number(s.horas)||0);},0);
+            var horasRech=rechazadas.reduce(function(acc,s){return acc+(Number(s.horas)||0);},0);
+            var horasTotal=horasAp+horasRech;
+            var isCollapsed=hsseMisCollapsed.has(mesKey);
+            return React.createElement("div",{key:mesKey,style:{borderRadius:8,border:"1px solid #dde2e8",overflow:"hidden"}},
+              React.createElement("div",{
+                onClick:function(){toggleHsseMes(mesKey);},
+                style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",cursor:"pointer",
+                  background:isCollapsed?"#f9fafb":"#1c3e5e",borderBottom:isCollapsed?"none":"1px solid #dde2e8"}
+              },
+                React.createElement("div",{style:{display:"flex",gap:10,alignItems:"center"}},
+                  React.createElement("span",{style:{fontWeight:700,fontSize:13,color:isCollapsed?"#1c3e5e":"#fff"}},label),
+                  React.createElement("span",{style:{fontSize:11,color:isCollapsed?"#8a9199":"rgba(255,255,255,0.7)",background:isCollapsed?"#eee":"rgba(255,255,255,0.15)",padding:"1px 8px",borderRadius:10}},regs.length+" sup · "+horasTotal+"h"),
+                  aprobadas.length>0&&React.createElement("span",{style:{fontSize:11,color:isCollapsed?"#059669":"#86efac",fontWeight:600}},"\u2713 "+aprobadas.length+" ("+horasAp+"h)"),
+                  rechazadas.length>0&&React.createElement("span",{style:{fontSize:11,color:isCollapsed?"#d03030":"#fca5a5",fontWeight:600}},"\u2715 "+rechazadas.length)
+                ),
+                React.createElement("span",{style:{fontSize:11,color:isCollapsed?"#8a9199":"#fff"}},isCollapsed?"\u25BC Expandir":"\u25B2 Colapsar")
+              ),
+              !isCollapsed&&React.createElement("div",{style:{padding:"10px 12px"}},
+                // Bloque aprobadas
+                aprobadas.length>0&&React.createElement("div",{style:{marginBottom:rechazadas.length>0?14:0}},
+                  React.createElement("div",{style:{fontSize:10,fontWeight:700,color:"#059669",textTransform:"uppercase",letterSpacing:1,marginBottom:6}},"\u2713 Aprobadas ("+aprobadas.length+")"),
+                  aprobadas.map(function(s){
+                    var horasVis=s.horasOrig!=null?s.horasOrig:s.horas;
+                    return React.createElement("div",{key:s.id,style:{background:"#f0fdf4",borderRadius:8,border:"1px solid #bbf7d0",padding:"8px 12px",marginBottom:4}},
+                      React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}},
+                        React.createElement("div",{style:{flex:1}},
+                          React.createElement("div",{style:{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:2}},
+                            React.createElement("span",{style:{fontWeight:700,fontSize:12,color:"#065f46"}},s.site||"Sin site"),
+                            s.tipoActividad&&React.createElement("span",{style:{fontSize:11,color:"#8a9199"}},"\u00B7 "+s.tipoActividad)
+                          ),
+                          React.createElement("div",{style:{fontSize:11,color:"#8a9199",display:"flex",gap:8,flexWrap:"wrap"}},
+                            React.createElement("span",null,s.fecha?s.fecha.substring(8,10)+"/"+s.fecha.substring(5,7)+"/"+s.fecha.substring(0,4):"—"),
+                            s.zona&&React.createElement("span",null,"\u00B7 "+s.zona),
+                            s.empresa&&React.createElement("span",{style:{color:"#1c3e5e",fontWeight:600}},"\u00B7 "+s.empresa),
+                            React.createElement("span",{style:{fontWeight:600,color:"#059669"}},"\u00B7 "+horasVis+"h"),
+                            s.incidencias==="Sí"&&React.createElement("span",{style:{color:"#d03030",fontWeight:600}},"\u26A0 Incidencia")
+                          ),
+                          (s.motivoSupervision||s.comentarios)&&React.createElement("div",{style:{marginTop:4,fontSize:11,color:"#555e66",display:"flex",gap:8,flexWrap:"wrap"}},
+                            s.motivoSupervision&&React.createElement("span",null,"Motivo: "+s.motivoSupervision),
+                            s.comentarios&&React.createElement("span",null,"\u00B7 "+s.comentarios)
+                          )
+                        ),
+                        
+                      )
+                    );
+                  })
+                ),
+                // Bloque rechazadas
+                rechazadas.length>0&&React.createElement("div",null,
+                  React.createElement("div",{style:{fontSize:10,fontWeight:700,color:"#d03030",textTransform:"uppercase",letterSpacing:1,marginBottom:6}},"\u2715 Rechazadas/Anuladas ("+rechazadas.length+")"),
+                  rechazadas.map(function(s){
+                    var horasVis=s.horasOrig!=null?s.horasOrig:s.horas;
+                    return React.createElement("div",{key:s.id,style:{background:"#fff5f5",borderRadius:8,border:"1px solid #fecaca",padding:"8px 12px",marginBottom:4}},
+                      React.createElement("div",{style:{flex:1}},
+                        React.createElement("div",{style:{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:2}},
+                          React.createElement("span",{style:{fontWeight:700,fontSize:12,color:"#991b1b"}},s.site||"Sin site"),
+                          s.tipoActividad&&React.createElement("span",{style:{fontSize:11,color:"#8a9199"}},"\u00B7 "+s.tipoActividad),
+                          React.createElement("span",{style:{fontSize:10,fontWeight:700,color:"#d03030",background:"#fee2e2",padding:"1px 6px",borderRadius:4}},"Rechazada")
+                        ),
+                        React.createElement("div",{style:{fontSize:11,color:"#8a9199",display:"flex",gap:8,flexWrap:"wrap"}},
+                          React.createElement("span",null,s.fecha?s.fecha.substring(8,10)+"/"+s.fecha.substring(5,7)+"/"+s.fecha.substring(0,4):"—"),
+                          s.zona&&React.createElement("span",null,"\u00B7 "+s.zona),
+                          s.empresa&&React.createElement("span",{style:{color:"#1c3e5e",fontWeight:600}},"\u00B7 "+s.empresa),
+                          React.createElement("span",null,"\u00B7 "+horasVis+"h")
+                        ),
+                        (s.motivoSupervision||s.comentarios||s.motivoRechazo)&&React.createElement("div",{style:{marginTop:4,fontSize:11,color:"#991b1b",display:"flex",gap:8,flexWrap:"wrap"}},
+                          s.motivoRechazo&&React.createElement("span",{style:{fontWeight:600}},"Motivo rechazo: "+s.motivoRechazo),
+                          s.motivoSupervision&&!s.motivoRechazo&&React.createElement("span",null,"Motivo: "+s.motivoSupervision),
+                          s.comentarios&&React.createElement("span",null,"\u00B7 "+s.comentarios)
+                        )
+                      )
+                    );
+                  })
+                )
+              )
+            );
+          })
+        );
+      })()
+    )),
     /* INFORMES HSSE */
     viewH==="informes" && React.createElement(React.Fragment, null,
       React.createElement("div",{style:{display:"flex",gap:6,marginBottom:14}},
