@@ -135,7 +135,13 @@ const dbConceptos = {
 
 // Capítulos del preciario
 const dbCapitulos = {
-  getAll: () => _sb('/rest/v1/na_capitulos?order=orden.asc&limit=100')
+  // Solo capítulos de preciarios activos (evita duplicados de versiones antiguas)
+  getAll: async () => {
+    const precs = await _sb('/rest/v1/na_preciarios?activo=eq.true&select=id');
+    const ids = (precs || []).map(p => p.id);
+    if (!ids.length) return _sb('/rest/v1/na_capitulos?order=orden.asc&limit=100');
+    return _sb('/rest/v1/na_capitulos?preciario_id=in.(' + ids.join(',') + ')&order=orden.asc&limit=100');
+  }
 };
 
 // Sesiones (último login)
@@ -358,7 +364,9 @@ function _rowsToConcs(capitulos, conceptos) {
   // comparando con CAP_BASE (fallback para cuando preciario_bp_produccion.sql aún no se ha cargado)
   const hayCapitulos = Object.keys(capCodMap).length > 0;
 
-  return (conceptos || []).map(c => {
+  return (conceptos || [])
+    .filter(c => !hayCapitulos || !c.capitulo_id || capCodMap[c.capitulo_id] !== undefined)
+    .map(c => {
     let capId = '';
     if (hayCapitulos && c.capitulo_id) {
       capId = capCodMap[c.capitulo_id] || c.capitulo_id;
@@ -3675,12 +3683,12 @@ function App() {
         const [
           projRows, regRows, respRows, histRows,
           clienteRows, serieRows, factRows, estRows,
-          ofertaRows, hssRows, capsRows, concRows, hsseHistRows
+          ofertaRows, hssRows, capsRows, concRows
         ] = await Promise.all([
           dbProyectos.getAll(),
           dbRegistros.getAll(),
           dbResponsables.getAll(),
-          dbInformes.getAll(),        // todos los tipos (actividad + hsse)
+          dbInformes.getAll(),        // actividad + HSSE, distinguidos por prefijo en nombre
           dbClientes.getAll(),
           dbSeries.getAll(),
           dbFacturas.getAll(),
@@ -3688,8 +3696,7 @@ function App() {
           dbOfertas.getAll(),
           dbHsse.getAll(),
           dbCapitulos.getAll(),
-          dbConceptos.getAll(),
-          dbInformes.getByTipo('hsse') // informes HSSE separados
+          dbConceptos.getAll()
         ]);
 
         // 3. Proyectos
@@ -3741,31 +3748,29 @@ function App() {
         const REQUIRED_RESPS = [{ nombre: 'Concepción Gutierrez', sexo: 'F' }, { nombre: 'Daniel Romero', sexo: 'M' }];
         setResps(respsV3.length ? respsV3 : REQUIRED_RESPS);
 
-        // 6. Histórico (informes de actividad — tipo != 'hsse')
-        const histActividad = histRows || [];  // na_informes no tiene tipo, todos son de actividad
+        // 6. Histórico (informes de actividad) — na_informes no tiene columna 'tipo',
+        //    se distingue por el prefijo del nombre: 'INF-HSSE-' son HSSE, el resto son actividad
+        const histActividad = (histRows || []).filter(r => !(r.nombre || '').startsWith('INF-HSSE-'));
         setHistorico(histActividad.map(_rowToInforme));
 
-        // 6b. Histórico HSSE
-        const hsseHistV3 = (hsseHistRows || []).map(r => {
-          let meta = {};
-          try { if (r.po && r.po.startsWith('{')) meta = JSON.parse(r.po); } catch {}
-          return {
-            id: r.id,
-            nom: meta.nom || r.periodo || r.id,
-            html: r.html || '',
-            desde: meta.desde || (r.periodo ? r.periodo.split('/')[0] : ''),
-            hasta: meta.hasta || (r.periodo ? r.periodo.split('/')[1] : ''),
-            po: meta.po || '',
-            periodo: r.periodo || '',
-            numSups: meta.numSups || 0,
-            totalHoras: meta.totalHoras || 0,
-            totalImporte: meta.totalImporte || 0,
-            supIds: (() => { try { return JSON.parse(r.reg_ids || '[]'); } catch { return []; } })(),
-            facturado: meta.facturado || false,
-            creadoEn: r.creado_en || ''
-          };
-        });
-        setHsseHist([]);  // na_informes no tiene campo tipo — hsseHist se mantiene vacío hasta schema update
+        // 6b. Histórico HSSE — informes con nombre 'INF-HSSE-...' dentro de na_informes
+        const hsseInformes = (histRows || []).filter(r => (r.nombre || '').startsWith('INF-HSSE-'));
+        const hsseHistV3 = hsseInformes.map(r => ({
+          id: r.id,
+          nom: r.nombre || r.id,
+          html: r.html_cache || '',
+          desde: r.periodo_desde || '',
+          hasta: r.periodo_hasta || '',
+          po: '',
+          periodo: (r.periodo_desde && r.periodo_hasta) ? (r.periodo_desde + ' / ' + r.periodo_hasta) : '',
+          numSups: 0,
+          totalHoras: 0,
+          totalImporte: r.importe_total || 0,
+          supIds: [],
+          facturado: !!r.factura_id,
+          creadoEn: r.creado_en || ''
+        }));
+        setHsseHist(hsseHistV3);
 
         // 7. Clientes
         const clientesV3 = (clienteRows || []).map(r => ({
@@ -3963,15 +3968,21 @@ function App() {
       clearTimeout(window._bkHist);
       window._bkHist = setTimeout(async () => {
         try {
-          const rows = historico.map(inf => ({
-            id: inf.id, html: inf.html || '', periodo: inf.periodo || '',
-            nombre: inf.nom || inf.periodo || '',
-            proyecto_id: inf.proyectoId || null,
-            importe_total: inf.importeTotal || null,
-            estado: inf.estado || 'borrador',
-            html_cache: inf.html || '',
-            creado_en: inf.creadoEn || new Date().toISOString()
-          }));
+          const rows = historico.map(inf => {
+            const partes = (inf.periodo || '').split('→').map(s => s.trim());
+            return {
+              id: inf.id,
+              nombre: inf.nom || inf.periodo || '',
+              proyecto_id: inf.proyectoId || null,
+              periodo_desde: partes[0] && /^\d{4}-\d{2}-\d{2}$/.test(partes[0]) ? partes[0] : null,
+              periodo_hasta: partes[1] && /^\d{4}-\d{2}-\d{2}$/.test(partes[1]) ? partes[1] : null,
+              importe_total: inf.importeTotal || null,
+              estado: inf.estado === 'facturado' ? 'facturado' : (inf.estado || 'borrador'),
+              factura_id: inf.facturaId || null,
+              html_cache: inf.html || '',
+              creado_en: inf.creadoEn || new Date().toISOString()
+            };
+          });
           for (let i = 0; i < rows.length; i += 50) {
             await _sb('/rest/v1/na_informes', { method: 'POST', body: JSON.stringify(rows.slice(i, i+50)), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } });
           }
@@ -3979,6 +3990,32 @@ function App() {
       }, 1000);
     }
   }, [historico, loading]);
+
+  // Persistencia de informes HSSE — misma tabla na_informes, distinguidos por prefijo 'INF-HSSE-' en nombre
+  useEffect(() => {
+    if (!loading && hsseHist.length > 0) {
+      clearTimeout(window._bkHsseHist);
+      window._bkHsseHist = setTimeout(async () => {
+        try {
+          const rows = hsseHist.map(inf => ({
+            id: inf.id,
+            nombre: inf.nom || inf.id,
+            proyecto_id: null,
+            periodo_desde: inf.desde || null,
+            periodo_hasta: inf.hasta || null,
+            importe_total: inf.totalImporte || null,
+            estado: inf.facturado ? 'facturado' : 'borrador',
+            factura_id: null,
+            html_cache: inf.html || '',
+            creado_en: inf.creadoEn || new Date().toISOString()
+          }));
+          for (let i = 0; i < rows.length; i += 50) {
+            await _sb('/rest/v1/na_informes', { method: 'POST', body: JSON.stringify(rows.slice(i, i+50)), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } });
+          }
+        } catch(e) { console.error('[NorAcuaV3] persistencia hsseHist:', e); }
+      }, 1000);
+    }
+  }, [hsseHist, loading]);
 
   useEffect(() => {}, [deletedRegIds, deletedHistIds, loading]);
 
