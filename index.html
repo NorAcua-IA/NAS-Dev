@@ -5341,19 +5341,28 @@ function App() {
     certif_oferta:{ bg: "#d1fae5", border: "#059669" },
     certificado:  { bg: "#ccfbf1", border: "#0d9488" },
   }[estado] || { bg: C.pGlow, border: C.border });
+  const archivadasCount = registros.filter(r => {
+    const _abbrMap = {"JSF":"Jordi Santos","YLS":"Yennyfer Lemus","DRF":"Daniel","ILS":"Ignacio López","CGR":"Carlos García"};
+    const _userNames = new Set([user?.nombre, user?.id, ...Object.entries(_abbrMap).filter(([,v])=>v===user?.nombre).map(([k])=>k)].filter(Boolean));
+    if (!isAdmin && !_userNames.has(r.trabajador) && !_userNames.has(r.creadoPor)) return false;
+    const lineas = r.lineasGrupo || [];
+    const allAprob = lineas.length > 0 && lineas.every(l => l.certifAprobada);
+    const allCertifOferta = lineas.length > 0 && lineas.every(l => l.certifOferta);
+    return r.estadoCertif === "finalizado" || allAprob || r.estado === "aprobado" || r.estado === "certif_oferta" || allCertifOferta;
+  }).length;
   const navTrabajos = [{
     k: "registro",
     l: "Registro",
     i: P.clip
   }, {
     k: "revision",
-    l: "Revisión",
+    l: isAdmin ? "Revisión" : "Certificación",
     i: P.eye
-  }, ...(isAdmin ? [{
-    k: "archivadas",
-    l: "Archivadas",
-    i: P.hist
   }, {
+    k: "archivadas",
+    l: "Archivadas" + (archivadasCount > 0 ? " (" + archivadasCount + ")" : ""),
+    i: P.hist
+  }, ...(isAdmin ? [{
     k: "informes",
     l: "Informes",
     i: P.file
@@ -6226,7 +6235,7 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
       d: P.edit,
       sz: 13
     })))))));
-  })), view === "revision" && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h2", {
+  })), view === "revision" && isAdmin && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h2", {
     style: {
       fontSize: 17,
       fontWeight: 700,
@@ -6604,6 +6613,267 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
     });
   })()
 )))
+
+, view === "revision" && !isAdmin && /*#__PURE__*/React.createElement(React.Fragment, null,
+  /*#__PURE__*/React.createElement("h2", { style: { fontSize: 17, fontWeight: 700, marginBottom: 4 } }, "Certificación"),
+  /*#__PURE__*/React.createElement("p", { style: { fontSize: 12, color: C.muted, marginBottom: 10 } }, "Activa los ítems completados e indica las cantidades reales"),
+  /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 } },
+    /*#__PURE__*/React.createElement("select", {
+      value: filtroRTrab, onChange: e => setFiltroRTrab(e.target.value),
+      style: { padding: "5px 8px", border: "1px solid " + C.border, borderRadius: 5, fontSize: 12, fontFamily: "inherit", background: C.inputBg }
+    },
+      /*#__PURE__*/React.createElement("option", { value: "" }, "Todos los t\xE9cnicos"),
+      trabs.map(t => /*#__PURE__*/React.createElement("option", { key: t, value: t }, t))
+    ),
+    /*#__PURE__*/React.createElement("select", {
+      value: fCertEstado, onChange: e => setFCertEstado(e.target.value),
+      style: { padding: "5px 8px", border: "1px solid " + C.border, borderRadius: 5, fontSize: 12, fontFamily: "inherit", background: C.inputBg }
+    },
+      /*#__PURE__*/React.createElement("option", { value: "" }, "Todas"),
+      /*#__PURE__*/React.createElement("option", { value: "aprobadas" }, "✅ Aprobadas (normal)"),
+      /*#__PURE__*/React.createElement("option", { value: "ofertadas" }, "🗂 Ofertadas")
+    ),
+    /*#__PURE__*/React.createElement("select", {
+      value: fCertProy, onChange: e => setFCertProy(e.target.value),
+      style: { padding: "5px 8px", border: "1px solid " + C.border, borderRadius: 5, fontSize: 12, fontFamily: "inherit", background: C.inputBg }
+    },
+      /*#__PURE__*/React.createElement("option", { value: "" }, "Todos los proyectos"),
+      [...new Set(registros.filter(r => r.estado === "aprobado" || r.estado === "ofertada").map(r => r.proyectoId))].map(pid => {
+        const p = gP(pid); return p ? /*#__PURE__*/React.createElement("option", { key: pid, value: pid }, p.nombre) : null;
+      })
+    ),
+    /*#__PURE__*/React.createElement("select", {
+      value: fCertSite, onChange: e => setFCertSite(e.target.value),
+      style: { padding: "5px 8px", border: "1px solid " + C.border, borderRadius: 5, fontSize: 12, fontFamily: "inherit", background: C.inputBg }
+    },
+      /*#__PURE__*/React.createElement("option", { value: "" }, "Todas las ES"),
+      [...new Set(registros.filter(r => r.estado === "aprobado" || r.estado === "ofertada").map(r => gP(r.proyectoId)?.estacion).filter(Boolean))].map(es =>
+        /*#__PURE__*/React.createElement("option", { key: es, value: es }, es)
+      )
+    ),
+    /*#__PURE__*/React.createElement("input", {
+      type: "date", value: fCertDesde, onChange: e => setFCertDesde(e.target.value),
+      style: { padding: "5px 8px", border: "1px solid " + C.border, borderRadius: 5, fontSize: 12, fontFamily: "inherit", background: C.inputBg },
+      placeholder: "Desde"
+    }),
+    /*#__PURE__*/React.createElement("input", {
+      type: "date", value: fCertHasta, onChange: e => setFCertHasta(e.target.value),
+      style: { padding: "5px 8px", border: "1px solid " + C.border, borderRadius: 5, fontSize: 12, fontFamily: "inherit", background: C.inputBg },
+      placeholder: "Hasta"
+    }),
+    (fCertEstado || fCertProy || fCertSite || fCertDesde || fCertHasta) && /*#__PURE__*/React.createElement("button", {
+      onClick: () => { setFCertEstado(""); setFCertProy(""); setFCertSite(""); setFCertDesde(""); setFCertHasta(""); },
+      style: { padding: "5px 10px", border: "1px solid " + C.border, borderRadius: 5, fontSize: 12, background: "none", cursor: "pointer", color: C.muted }
+    }, "✕ Limpiar")
+  ),
+  (() => {
+    const misAprobadas = registros.filter(r => {
+      // Incluir aprobadas (normales y vía oferta) — excluir certif_oferta y finalizadas → van a Archivadas
+      const esAprobada = r.estado === "aprobado";
+      const esOfertada = r.estado === "ofertada";
+      const tieneOferta = !!(r.ofertaCodigo || (r.ofertaCodigos && r.ofertaCodigos.length > 0));
+      if (!esAprobada && !esOfertada && !tieneOferta) return false;
+      // Excluir completamente finalizadas → van a Archivadas
+      const _lns = r.lineasGrupo || [];
+      const _allAp = _lns.length > 0 && _lns.every(l => l.certifAprobada);
+      const _allCO = _lns.length > 0 && _lns.every(l => l.certifOferta);
+      if (r.estadoCertif === "finalizado" || _allAp || _allCO) return false;
+      const _abbrMap = {'JSF':'Jordi Santos','YLS':'Yennyfer Lemus','DRF':'Daniel','ILS':'Ignacio López','CGR':'Carlos García'};
+      const _userNames = new Set([user?.nombre, user?.id, ...Object.entries(_abbrMap).filter(([,v])=>v===user?.nombre).map(([k])=>k)].filter(Boolean));
+      if (!((_userNames.has(r.trabajador) && r.trabajador) || (!r.trabajador && _userNames.has(r.creadoPor)))) return false;
+      if (filtroRTrab) {
+        const _abbrRev = Object.fromEntries(Object.entries(_abbrMap).map(([k,v])=>[v,k]));
+        if (r.trabajador !== filtroRTrab && r.trabajador !== _abbrRev[filtroRTrab]) return false;
+      }
+      if (fCertProy && r.proyectoId !== fCertProy) return false;
+      const proy = gP(r.proyectoId);
+      if (fCertSite && proy?.estacion !== fCertSite) return false;
+      if (fCertDesde && r.fecha < fCertDesde) return false;
+      if (fCertHasta && r.fecha > fCertHasta) return false;
+      // Filtro por tipo: "aprobadas" = sin ofertaCodigo | "ofertadas" = con ofertaCodigo
+      if (fCertEstado === "aprobadas" && r.ofertaCodigo) return false;
+      if (fCertEstado === "ofertadas" && !r.ofertaCodigo) return false;
+      return true;
+    });
+    if (!misAprobadas.length) return /*#__PURE__*/React.createElement("div", {
+      style: { textAlign: "center", color: C.muted, padding: "40px 0", fontSize: 13 }
+    }, "No hay actividades con los filtros seleccionados");
+    return misAprobadas.map(r => {
+      const proy = gP(r.proyectoId);
+      const lineas = r.lineasGrupo || [];
+      const certAprobCount = lineas.filter(l => l.certifAprobada).length;
+      const certEnvCount = lineas.filter(l => l.certifEnviada && !l.certifAprobada).length;
+      const pendCount = lineas.filter(l => !l.certifEnviada && !l.certifAprobada).length;
+      const allAprob = lineas.length > 0 && lineas.every(l => l.certifAprobada);
+      const allCertifOferta = lineas.length > 0 && lineas.every(l => l.certifOferta);
+      const esFinalizado = r.estadoCertif === "finalizado" || allAprob;
+      const esOfertada = !!r.ofertaCodigo;
+      const isCollapsed = certCollapsed.has(r.id);
+      const hayMarcados = esOfertada
+        ? lineas.some(l => l._ofertaCheck && !l.certifOferta)
+        : lineas.some(l => l._certifCheck && !l.certifAprobada);
+      // Colores: ofertadas en violeta, aprobadas normal en azul/verde
+      const headerBg = esOfertada
+        ? (allCertifOferta ? "#d1fae5" : "#ede9fe")
+        : (esFinalizado ? "#d1fae5" : certEnvCount > 0 ? "#fef9c3" : "#dbeafe");
+      const headerBorder = esOfertada
+        ? (allCertifOferta ? "#059669" : "#7c3aed")
+        : (esFinalizado ? C.success : certEnvCount > 0 ? C.warn : "#3b82f6");
+      return /*#__PURE__*/React.createElement("div", {
+        key: r.id,
+        style: { ...rowSt, marginBottom: 10, padding: 0, overflow: "hidden",
+          border: "2px solid " + headerBorder }
+      },
+        /*#__PURE__*/React.createElement("div", {
+          onClick: () => toggleCert(r.id),
+          style: { display: "flex", justifyContent: "space-between", alignItems: "center",
+            padding: "8px 12px", cursor: "pointer", background: headerBg,
+            borderBottom: isCollapsed ? "none" : "1px solid " + headerBorder }
+        },
+          /*#__PURE__*/React.createElement("div", { style: { flex: 1 } },
+            /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" } },
+              /*#__PURE__*/React.createElement("span", { style: { fontWeight: 700, fontSize: 12 } },
+                r.esGrupo ? ("GRUPO · " + lineas.length + " ítems") : (gC(r.conceptoId)?.nombre || "—")
+              ),
+              esOfertada && /*#__PURE__*/React.createElement("span", {
+                style: { fontSize: 10, fontWeight: 700, color: "#7c3aed", background: "#f5f3ff", padding: "1px 6px", borderRadius: 4, border: "1px solid #c4b5fd" }
+              }, "🗂 " + r.ofertaCodigo),
+              (esFinalizado || allCertifOferta) && /*#__PURE__*/React.createElement("span", {
+                style: { fontSize: 10, fontWeight: 700, color: "#065f46", background: "#a7f3d0", padding: "1px 6px", borderRadius: 4 }
+              }, "✓ FINALIZADO"),
+              !esFinalizado && !esOfertada && r.estadoCertif && /*#__PURE__*/React.createElement("span", {
+                style: { fontSize: 10, color: C.primary, background: C.pGlow, padding: "1px 6px", borderRadius: 4 }
+              }, { cert_parcial: "Parcial", cert_total: "Total" }[r.estadoCertif] || r.estadoCertif)
+            ),
+            /*#__PURE__*/React.createElement("div", { style: { fontSize: 11, color: C.muted, marginTop: 2, display: "flex", gap: 8, flexWrap: "wrap" } },
+              proy && /*#__PURE__*/React.createElement("span", { style: { fontWeight: 600, color: C.textSec } }, proy.nombre),
+              proy?.estacion && /*#__PURE__*/React.createElement("span", null, "· " + proy.estacion),
+              /*#__PURE__*/React.createElement("span", null, "· " + fmtD(r.fecha)),
+              /*#__PURE__*/React.createElement("span", { style: { color: C.success } }, "✓ " + certAprobCount),
+              certEnvCount > 0 && /*#__PURE__*/React.createElement("span", { style: { color: C.warn } }, "⏳ " + certEnvCount),
+              pendCount > 0 && /*#__PURE__*/React.createElement("span", { style: { color: C.muted } }, "○ " + pendCount)
+            )
+          ),
+          /*#__PURE__*/React.createElement("span", { style: { fontSize: 10, color: C.muted, marginLeft: 8 } }, isCollapsed ? "▼" : "▲")
+        ),
+        !isCollapsed && /*#__PURE__*/React.createElement("div", { style: { padding: "10px 12px" } },
+          /*#__PURE__*/React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 } },
+            /*#__PURE__*/React.createElement("select", {
+              value: r.estadoCertif || "", onChange: e => setRegistros(rs => rs.map(x => x.id === r.id ? { ...x, estadoCertif: e.target.value } : x)),
+              style: { padding: "4px 8px", border: "1px solid " + C.border, borderRadius: 4, fontSize: 11, fontFamily: "inherit", background: (esFinalizado || allCertifOferta) ? "#d1fae5" : C.inputBg, color: (esFinalizado || allCertifOferta) ? "#065f46" : C.text, fontWeight: (esFinalizado || allCertifOferta) ? 700 : 400 }
+            },
+              /*#__PURE__*/React.createElement("option", { value: "" }, "Estado certificación"),
+              /*#__PURE__*/React.createElement("option", { value: "cert_parcial" }, "Certificación parcial"),
+              /*#__PURE__*/React.createElement("option", { value: "cert_total" }, "Certificación total"),
+              /*#__PURE__*/React.createElement("option", { value: "finalizado" }, "✓ Finalizado")
+            ),
+            /*#__PURE__*/React.createElement("button", {
+              disabled: !hayMarcados,
+              onClick: async () => {
+                if (esOfertada) {
+                  // Flujo ofertada: certifOferta directo, sin aprobación admin
+                  setRegistros(rs => rs.map(x => {
+                    if (x.id !== r.id) return x;
+                    const updLineas = x.lineasGrupo.map(l =>
+                      l._ofertaCheck && !l.certifOferta
+                        ? { ...l, certifOferta: true, certifOfertaAt: new Date().toISOString(), cantCertifOferta: l._cantOferta ?? l.cantidad, _ofertaCheck: false }
+                        : l
+                    );
+                    const allDone = updLineas.every(l => l.certifOferta);
+                    return { ...x, lineasGrupo: updLineas, ...(allDone ? { estado: "certif_oferta", certifOfertaAt: new Date().toISOString() } : {}) };
+                  }));
+                } else {
+                  // Flujo normal: certifEnviada → pendiente aprobación admin
+                  try {
+                    const fresh = await dbRegistros.getAll();
+                    const base = fresh || registros;
+                    setRegistros(base.map(x => {
+                      if (x.id !== r.id) return x;
+                      const updated = { ...x, lineasGrupo: x.lineasGrupo.map((l, idx) => {
+                        const localL = registros.find(rr => rr.id === r.id)?.lineasGrupo?.[idx];
+                        if (localL?._certifCheck && !l.certifAprobada) {
+                          return { ...l, certifEnviada: true, certifAprobada: false, cantCertif: localL._cantCertif ?? l.cantidad, _certifCheck: false, certifEnviadaAt: new Date().toISOString() };
+                        }
+                        return l;
+                      })};
+                      const allNowAprob = updated.lineasGrupo.every(l => l.certifAprobada);
+                      if (allNowAprob) updated.estadoCertif = "finalizado";
+                      return updated;
+                    }));
+                  } catch(e) {
+                    setRegistros(rs => rs.map(x => x.id !== r.id ? x : {
+                      ...x,
+                      lineasGrupo: x.lineasGrupo.map(l => l._certifCheck && !l.certifAprobada
+                        ? { ...l, certifEnviada: true, certifAprobada: false, cantCertif: l._cantCertif ?? l.cantidad, _certifCheck: false, certifEnviadaAt: new Date().toISOString() }
+                        : l)
+                    }));
+                  }
+                }
+              },
+              style: { padding: "5px 12px", fontSize: 11, background: hayMarcados ? (esOfertada ? "#7c3aed" : C.success) : C.border, color: "#fff", border: "none", borderRadius: 5, cursor: hayMarcados ? "pointer" : "not-allowed", fontFamily: "inherit", fontWeight: 600 }
+            }, esOfertada ? "📤 Certificar ejecución" : "📤 Enviar certificación")
+          ),
+          r.esGrupo && lineas.map((l, i) => {
+            const conc = gC(l.conceptoId);
+            const isAprobada = esOfertada ? l.certifOferta : l.certifAprobada;
+            const isEnviada = !esOfertada && l.certifEnviada && !l.certifAprobada;
+            return /*#__PURE__*/React.createElement("div", {
+              key: l.id || i,
+              style: {
+                display: "flex", alignItems: "center", gap: 8, padding: "6px 10px",
+                borderRadius: 5, fontSize: 12, marginBottom: 4,
+                background: isAprobada ? "#d1fae5" : isEnviada ? "#fef9c3" : C.cardL,
+                border: "1px solid " + (isAprobada ? C.success : isEnviada ? C.warn : (esOfertada ? "#c4b5fd" : C.border))
+              }
+            },
+              !isAprobada && !isEnviada && !(esFinalizado || allCertifOferta) && /*#__PURE__*/React.createElement("input", {
+                type: "checkbox",
+                checked: esOfertada ? (l._ofertaCheck || false) : (l._certifCheck || false),
+                onChange: e => setRegistros(rs => rs.map(x => x.id === r.id ? {
+                  ...x, lineasGrupo: x.lineasGrupo.map((ll, j) => j === i
+                    ? esOfertada ? { ...ll, _ofertaCheck: e.target.checked } : { ...ll, _certifCheck: e.target.checked }
+                    : ll)
+                } : x)),
+                style: { width: 14, height: 14, flexShrink: 0 }
+              }),
+              isAprobada && /*#__PURE__*/React.createElement("span", { style: { color: C.success, fontSize: 14, flexShrink: 0 } }, "✓"),
+              isEnviada && /*#__PURE__*/React.createElement("span", { style: { color: C.warn, fontSize: 14, flexShrink: 0 } }, "⏳"),
+              /*#__PURE__*/React.createElement("div", { style: { flex: 1 } },
+                /*#__PURE__*/React.createElement("span", { style: { color: isAprobada ? "#065f46" : C.text, fontWeight: isAprobada ? 600 : 400, fontSize: 12 } },
+                  conc?.nombre || "—"
+                ),
+                l.observaciones && /*#__PURE__*/React.createElement("div", {
+                  style: { fontSize: 10, color: C.muted, fontStyle: "italic", marginTop: 1 }
+                }, l.observaciones)
+              ),
+              isAprobada && /*#__PURE__*/React.createElement("span", { style: { fontSize: 11, color: "#065f46", whiteSpace: "nowrap" } },
+                "✓ " + l.cantCertif + " uds (orig: " + l.cantidad + ")"
+              ),
+              isEnviada && /*#__PURE__*/React.createElement("span", { style: { fontSize: 11, color: "#92400e", whiteSpace: "nowrap" } },
+                "⏳ " + l.cantCertif + " uds · pendiente"
+              ),
+              !isAprobada && !isEnviada && !(esFinalizado || allCertifOferta) && (esOfertada ? l._ofertaCheck : l._certifCheck) && /*#__PURE__*/React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 4 } },
+                /*#__PURE__*/React.createElement("span", { style: { fontSize: 11, color: C.muted } }, "→"),
+                /*#__PURE__*/React.createElement("input", {
+                  type: "number", min: "0", step: "0.01",
+                  value: esOfertada ? (l._cantOferta ?? l.cantidad) : (l._cantCertif ?? l.cantidad),
+                  onClick: e => e.stopPropagation(),
+                  onChange: e => setRegistros(rs => rs.map(x => x.id === r.id ? {
+                    ...x, lineasGrupo: x.lineasGrupo.map((ll, j) => j === i
+                      ? esOfertada ? { ...ll, _cantOferta: Number(e.target.value) } : { ...ll, _cantCertif: Number(e.target.value) }
+                      : ll)
+                  } : x)),
+                  style: { width: 55, padding: "2px 5px", border: "1px solid " + C.border, borderRadius: 4, fontSize: 11, fontFamily: "inherit", background: C.inputBg, textAlign: "center" }
+                }),
+                /*#__PURE__*/React.createElement("span", { style: { fontSize: 11, color: C.muted } }, "uds")
+              )
+            );
+          })
+        )
+      );
+    });
+  })()
+)
 
 , view === "archivadas" && isAdmin && /*#__PURE__*/React.createElement(React.Fragment, null,
   /*#__PURE__*/React.createElement("h2", { style: { fontSize: 17, fontWeight: 700, marginBottom: 4 } }, "Archivadas"),
