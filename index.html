@@ -12507,7 +12507,7 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
   modulo === "hsse" && React.createElement(React.Fragment, null,
     /* HSSE sub-nav */
     React.createElement("div", {style:{display:"flex",gap:4,marginBottom:12,background:"#fff",borderRadius:8,padding:4,border:"1px solid #dde2e8"}},
-      [{k:"registro",l:"Registro"},{k:"revision",l:"Revisión"},{k:"informes",l:"Informes HSSE"},{k:"config",l:"Config HSSE"}].map(function(t){
+      navHsse.map(function(t){
         return React.createElement("button",{key:t.k,onClick:function(){setViewH(t.k);},style:{flex:1,padding:"5px 8px",borderRadius:5,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,background:viewH===t.k?"#00c8c8":"transparent",color:viewH===t.k?"#fff":"#555e66"}},t.l);
       })
     ),
