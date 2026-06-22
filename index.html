@@ -127,21 +127,36 @@ const dbHsse = {
 };
 
 // Conceptos (preciario — sin cifrado en v3)
+// Trae TODOS los conceptos de TODOS los preciarios (activos e inactivos): la UI de
+// catálogo necesita ver/editar el preciario inactivo también (ej. BP 2026 antes de activarlo).
+// El filtrado por preciario activo se hace en cliente, según el contexto (catálogo vs. crear actividad).
 const dbConceptos = {
-  getAll: () => _sb('/rest/v1/na_conceptos?order=orden.asc&limit=500'),
+  getAll: () => _sb('/rest/v1/na_conceptos?order=orden.asc&limit=2000'),
   upsert: row => _sb('/rest/v1/na_conceptos', { method: 'POST', body: JSON.stringify(row), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } }),
   patch: (id, data) => _sb('/rest/v1/na_conceptos?id=eq.' + id, { method: 'PATCH', body: JSON.stringify(data) })
 };
 
-// Capítulos del preciario
+// Capítulos de TODOS los preciarios (igual razón que dbConceptos — antes solo traía los de
+// preciarios activos, lo que dejaba huérfanos los conceptos de un preciario inactivo como BP 2026)
 const dbCapitulos = {
-  // Solo capítulos de preciarios activos (evita duplicados de versiones antiguas)
+  getAll: () => _sb('/rest/v1/na_capitulos?order=orden.asc&limit=200')
+};
+
+// Preciarios + sus clientes asociados (tabla puente na_preciario_clientes, N:M)
+const dbPreciarios = {
   getAll: async () => {
-    const precs = await _sb('/rest/v1/na_preciarios?activo=eq.true&select=id');
-    const ids = (precs || []).map(p => p.id);
-    if (!ids.length) return _sb('/rest/v1/na_capitulos?order=orden.asc&limit=100');
-    return _sb('/rest/v1/na_capitulos?preciario_id=in.(' + ids.join(',') + ')&order=orden.asc&limit=100');
-  }
+    const precs = await _sb('/rest/v1/na_preciarios?order=vigente_desde.desc.nullslast&limit=100') || [];
+    const asignaciones = await _sb('/rest/v1/na_preciario_clientes?select=preciario_id,cliente_id') || [];
+    const clientesPorPreciario = {};
+    asignaciones.forEach(a => {
+      if (!clientesPorPreciario[a.preciario_id]) clientesPorPreciario[a.preciario_id] = [];
+      clientesPorPreciario[a.preciario_id].push(a.cliente_id);
+    });
+    return precs.map(p => ({ ...p, clienteIds: clientesPorPreciario[p.id] || [] }));
+  },
+  toggleActivo: (id, activo) => _sb('/rest/v1/na_preciarios?id=eq.' + id, { method: 'PATCH', body: JSON.stringify({ activo }) }),
+  asociarCliente: (preciarioId, clienteId) => _sb('/rest/v1/na_preciario_clientes', { method: 'POST', body: JSON.stringify({ preciario_id: preciarioId, cliente_id: clienteId }), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } }),
+  desasociarCliente: (preciarioId, clienteId) => _sb('/rest/v1/na_preciario_clientes?preciario_id=eq.' + preciarioId + '&cliente_id=eq.' + clienteId, { method: 'DELETE' })
 };
 
 // Sesiones (último login)
@@ -346,60 +361,69 @@ function _rowToInforme(row) {
 
 // Convierte filas v3 de na_conceptos al formato plano que espera React (igual que FRESH_CAT)
 // FRESH_CAT = array plano de items con {id, nombre, capId, p, activo}
-function _rowsToConcs(capitulos, conceptos) {
-  // Mapa capitulo_id → código corto del capítulo (ej. "1", "2"...)
-  // Intentamos primero con la columna "codigo", luego con "orden", luego con índice
-  const capCodMap = {};
-  const capNomMap = {}; // para fallback por nombre
+function _rowsToConcs(capitulos, conceptos, preciarios) {
+  // Mapa capitulo_id → {cod, nombre, preciarioId} — cod es el código corto ("1","2"...)
+  const capInfo = {};
   (capitulos || []).forEach((cap, idx) => {
-    // na_capitulos.codigo is "CAP01","CAP02"... convert to short code "1","2"...
-    // that matches CAP_BASE.cap which uses "1","2"...
     const rawCod = cap.codigo || '';
     const cod = rawCod.replace(/^CAP0?/, '') || String(cap.orden || idx + 1);
-    capCodMap[cap.id] = cod;
-    capNomMap[cap.id] = cap.nombre || '';
+    capInfo[cap.id] = { cod, nombre: cap.nombre || '', preciarioId: cap.preciario_id };
   });
+  const precInfo = {};
+  (preciarios || []).forEach(p => { precInfo[p.id] = p; });
 
-  // Si no hay capitulos en BD, intentar deducir capId del nombre del concepto
-  // comparando con CAP_BASE (fallback para cuando preciario_bp_produccion.sql aún no se ha cargado)
-  const hayCapitulos = Object.keys(capCodMap).length > 0;
+  const hayCapitulos = Object.keys(capInfo).length > 0;
 
   return (conceptos || [])
-    .filter(c => !hayCapitulos || !c.capitulo_id || capCodMap[c.capitulo_id] !== undefined)
+    .filter(c => !hayCapitulos || !c.capitulo_id || capInfo[c.capitulo_id] !== undefined)
     .map(c => {
-    let capId = '';
-    if (hayCapitulos && c.capitulo_id) {
-      capId = capCodMap[c.capitulo_id] || c.capitulo_id;
-    }
-    // v3 schema: precio es una sola columna; precios_zona puede estar en datos_extra o deducido
-    // Si el schema tiene precios_zona (jsonb) usarlo; si no, mapear precio único a todas las zonas
-    let p;
-    if (c.precios_zona && typeof c.precios_zona === 'object') {
-      p = c.precios_zona;
-    } else if (c.precio != null) {
-      // precio único → aplicar a todas las zonas (simplificación hasta cargar preciario BP)
-      p = { CENTRO: c.precio, NORTE: c.precio, 'CATALUÑA': c.precio, BALEARES: c.precio, OTROS: c.precio };
-    } else {
-      p = { CENTRO: null, NORTE: null, 'CATALUÑA': null, BALEARES: null, OTROS: null };
-    }
-    return {
-      id: c.id,
-      nombre: c.nombre || '',
-      capId,
-      activo: c.activo !== false,
-      p
-    };
-  });
+      const info = hayCapitulos && c.capitulo_id ? capInfo[c.capitulo_id] : null;
+      const capId = info ? info.cod : '';
+      const preciarioId = info ? info.preciarioId : null;
+      const preciario = preciarioId ? precInfo[preciarioId] : null;
+
+      // Precios reales por zona (columnas física separadas en na_conceptos).
+      // OTROS no se guarda: siempre es el máximo de las 4 zonas definidas (regla de negocio).
+      const zonas = [c.precio_centro, c.precio_norte, c.precio_cataluna, c.precio_baleares]
+        .map(v => v == null ? null : Number(v));
+      const definidos = zonas.filter(v => v != null && !isNaN(v));
+      const otros = definidos.length ? Math.max(...definidos) : null;
+      const p = {
+        CENTRO: zonas[0],
+        NORTE: zonas[1],
+        'CATALUÑA': zonas[2],
+        BALEARES: zonas[3],
+        OTROS: otros
+      };
+
+      return {
+        id: c.id,
+        codigo: c.legacy_id || '',       // "1.1" — lo que se muestra en pantalla
+        nombre: c.nombre || '',
+        capId,
+        capNombre: info ? info.nombre : '',
+        capitulosId: c.capitulo_id,
+        preciarioId,
+        preciarioNombre: preciario ? preciario.nombre : '',
+        activo: c.activo !== false,
+        p
+      };
+    });
 }
 
 // Convierte el array plano concs[] a filas na_conceptos para upsert
+// IMPORTANTE: capitulo_id debe ser el UUID real del capítulo (item.capitulosId),
+// nunca el código corto item.capId ("1","2"...) — eso corrompería la relación.
 function _concsToRows(concs) {
   return concs.map(item => ({
     id: item.id,
     nombre: item.nombre || '',
-    capitulo_id: item.capId || null,
-    precios_zona: item.p || {},   // si la columna existe en el schema
-    precio: item.p?.CENTRO ?? null,  // columna precio (schema v3 real)
+    capitulo_id: item.capitulosId || null,
+    legacy_id: item.codigo || null,
+    precio_centro: item.p?.CENTRO ?? null,
+    precio_norte: item.p?.NORTE ?? null,
+    precio_cataluna: item.p?.['CATALUÑA'] ?? null,
+    precio_baleares: item.p?.BALEARES ?? null,
     activo: item.activo !== false
   }));
 }
@@ -2130,7 +2154,11 @@ const CAP_BASE = [{
 }];
 const FRESH_CAT = CAP_BASE.flatMap(cap => cap.items.map(i => ({
   ...i,
+  codigo: i.id,        // en el fallback hardcoded, id e codigo coinciden ("1.1")
   capId: cap.cap,
+  capNombre: cap.nombre,
+  preciarioId: null,
+  preciarioNombre: 'Fallback local',
   activo: true
 })));
 const CLIENTES_DEF = [{
@@ -2859,6 +2887,140 @@ function Sec({
   }, action)),
   open && children);
 }
+// Tarjeta de un preciario dentro del Catálogo: nombre, clientes asociados, estado,
+// toggle activo/inactivo del preciario completo, y al expandir: buscador + filtro de
+// capítulo + listado jerárquico de conceptos con su propio toggle individual.
+function PreciarioCard({
+  preciario, conceptos, clientes, isAdmin,
+  onTogglePreciario, onToggleConcepto, onEditConcepto,
+  search, onSearchChange, capFiltro, onCapFiltroChange
+}) {
+  const [open, setOpen] = React.useState(false);
+  const clientesNombres = (preciario.clienteIds || [])
+    .map(cid => clientes.find(cl => cl.id === cid)?.nombre)
+    .filter(Boolean);
+  const activos = conceptos.filter(c => c.activo !== false).length;
+  // Capítulos presentes en este preciario, ordenados numéricamente por código
+  const capsDelPreciario = useMemo(() => {
+    const porCap = {};
+    conceptos.forEach(c => {
+      if (!c.capId) return;
+      if (!porCap[c.capId]) porCap[c.capId] = { cap: c.capId, nombre: c.capNombre || '' };
+    });
+    return Object.values(porCap).sort((a, b) => {
+      const na = parseFloat(a.cap), nb = parseFloat(b.cap);
+      if (!isNaN(na) && !isNaN(nb)) return na - nb;
+      return String(a.cap).localeCompare(String(b.cap));
+    });
+  }, [conceptos]);
+
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      border: `1px solid ${C.border}`,
+      borderRadius: 8,
+      marginBottom: 10,
+      overflow: "hidden",
+      opacity: preciario.activo === false ? .7 : 1
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    onClick: () => setOpen(o => !o),
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 10,
+      padding: "10px 12px",
+      background: C.cardL,
+      cursor: "pointer",
+      userSelect: "none"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: { fontSize: 10, color: C.muted, transition: "transform 0.15s", display: "inline-block", transform: open ? "rotate(0deg)" : "rotate(-90deg)" }
+  }, "▼"),
+  /*#__PURE__*/React.createElement("div", {
+    style: { flex: 1, minWidth: 0 }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: { fontSize: 13, fontWeight: 700, color: C.text }
+  }, preciario.nombre), /*#__PURE__*/React.createElement("div", {
+    style: { fontSize: 10, color: C.textSec, marginTop: 2 }
+  }, clientesNombres.length ? clientesNombres.join(", ") : "Sin clientes asociados",
+     "  ·  ", activos, "/", conceptos.length, " conceptos activos")),
+  /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 9,
+      fontWeight: 700,
+      textTransform: "uppercase",
+      padding: "3px 8px",
+      borderRadius: 20,
+      background: preciario.activo === false ? C.border : C.pGlow,
+      color: preciario.activo === false ? C.muted : C.primary
+    }
+  }, preciario.activo === false ? "Inactivo" : "Activo"),
+  isAdmin && /*#__PURE__*/React.createElement("div", {
+    onClick: e => e.stopPropagation()
+  }, /*#__PURE__*/React.createElement(Toggle, {
+    on: preciario.activo !== false,
+    onChange: v => onTogglePreciario(preciario.id, v)
+  }))),
+  open && /*#__PURE__*/React.createElement("div", {
+    style: { padding: 12 }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: { marginBottom: 9, display: "flex", gap: 7, alignItems: "center" }
+  }, /*#__PURE__*/React.createElement("input", {
+    placeholder: "Buscar concepto...",
+    value: search,
+    onChange: e => onSearchChange(e.target.value),
+    style: { flex: 1, padding: "5px 9px", border: `1px solid ${C.border}`, borderRadius: 5, fontSize: 11, fontFamily: "inherit", background: C.inputBg, outline: "none" }
+  }), /*#__PURE__*/React.createElement("span", {
+    style: { fontSize: 11, fontWeight: 600, color: C.textSec }
+  }, "Cap\xEDtulo:"), /*#__PURE__*/React.createElement("select", {
+    value: capFiltro,
+    onChange: e => onCapFiltroChange(e.target.value),
+    style: { padding: "5px 9px", border: `1px solid ${C.border}`, borderRadius: 5, fontSize: 11, fontFamily: "inherit", background: C.inputBg }
+  }, /*#__PURE__*/React.createElement("option", { value: "" }, "Todos"),
+     capsDelPreciario.map(cap => /*#__PURE__*/React.createElement("option", {
+       key: cap.cap, value: cap.cap
+     }, cap.cap, ". ", cap.nombre)))),
+  capsDelPreciario.filter(cap => !capFiltro || cap.cap === capFiltro).map(cap => {
+    const items = conceptos.filter(c => c.capId === cap.cap && (!search || (c.nombre || "").toLowerCase().includes(search.toLowerCase())));
+    if (!items.length) return null;
+    const act = items.filter(c => c.activo !== false).length;
+    return /*#__PURE__*/React.createElement("div", {
+      key: cap.cap,
+      style: { marginBottom: 12 }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex", justifyContent: "space-between", fontSize: 10, fontWeight: 800,
+        color: C.primary, textTransform: "uppercase", letterSpacing: 1,
+        padding: "3px 7px", background: C.pGlow, borderRadius: 4, marginBottom: 3
+      }
+    }, /*#__PURE__*/React.createElement("span", null, cap.cap, ". ", cap.nombre),
+       /*#__PURE__*/React.createElement("span", { style: { fontWeight: 400, color: C.muted } }, act, "/", items.length)),
+    items.map(c => /*#__PURE__*/React.createElement("div", {
+      key: c.id,
+      style: {
+        display: "flex", alignItems: "center", gap: 7, padding: "4px 7px",
+        borderBottom: `1px solid ${C.border}`, opacity: c.activo === false ? .6 : 1
+      }
+    }, /*#__PURE__*/React.createElement(Toggle, {
+      on: c.activo !== false,
+      onChange: () => onToggleConcepto(c.id)
+    }), /*#__PURE__*/React.createElement("span", {
+      style: { flex: 1, fontSize: 11 }
+    }, c.codigo || c.id, " \u2014 ", c.nombre),
+    /*#__PURE__*/React.createElement("div", {
+      style: { display: "flex", gap: 9, fontSize: 10, color: C.textSec, flexShrink: 0 }
+    }, ZONAS.map(z => /*#__PURE__*/React.createElement("span", {
+      key: z,
+      style: { minWidth: 52, textAlign: "right" }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: { color: C.muted, fontSize: 9 }
+    }, z, " "), c.p[z] != null ? c.p[z].toLocaleString("es-ES") + " €" : "—"))),
+    /*#__PURE__*/React.createElement("button", {
+      onClick: () => onEditConcepto(c),
+      style: { background: "none", border: "none", cursor: "pointer", color: C.primary, padding: "2px 3px" }
+    }, /*#__PURE__*/React.createElement(Ic, { d: P.edit, sz: 11 })))));
+  })));
+}
 const Chip = ({
   label,
   onDel
@@ -3333,9 +3495,8 @@ function genPDFOferta({
   const grupos = {};
   (oferta.lineas || []).forEach(l => {
     const c = concs.find(x => x.id === l.conceptoId);
-    const cap = c ? CAP_BASE.find(x => x.cap === c.capId) : null;
-    const key = cap ? cap.cap : "0";
-    const nom = cap ? `${cap.cap}. ${cap.nombre}` : "Sin capítulo";
+    const key = c?.capId || "0";
+    const nom = c ? `${c.capId}. ${c.capNombre || ''}` : "Sin capítulo";
     if (!grupos[key]) grupos[key] = {
       nom,
       items: []
@@ -3474,6 +3635,7 @@ function App() {
   const [deletedRegIds, setDeletedRegIds] = useState(new Set());
   const [deletedHistIds, setDeletedHistIds] = useState(new Set());
   const [concs, setConcs] = useState([]);
+  const [preciarios, setPreciarios] = useState([]);
   const [trabs, setTrabs] = useState(["Daniel", "Jordi Santos", "Yennyfer Lemus", "Técnico NorAcua", "Carlos García"]);
   // FIX #11: responsables con sexo
   const [resps, setResps] = useState([{
@@ -3574,6 +3736,7 @@ function App() {
     c: ""
   });
   const [capFiltro, setCapFiltro] = useState("");
+  const [precFiltroActivos, setPrecFiltroActivos] = useState(true); // true = solo activos, false = todos
   const [nuevaES, setNuevaES] = useState("");
   const [editDoc, setEditDoc] = useState(null);
   const [editMode, setEditMode] = useState("new");
@@ -3702,7 +3865,7 @@ function App() {
         const [
           projRows, regRows, respRows, histRows,
           clienteRows, serieRows, factRows, estRows,
-          ofertaRows, hssRows, capsRows, concRows
+          ofertaRows, hssRows, capsRows, concRows, precRows
         ] = await Promise.all([
           dbProyectos.getAll(),
           dbRegistros.getAll(),
@@ -3715,7 +3878,8 @@ function App() {
           dbOfertas.getAll(),
           dbHsse.getAll(),
           dbCapitulos.getAll(),
-          dbConceptos.getAll()
+          dbConceptos.getAll(),
+          dbPreciarios.getAll()
         ]);
 
         // 3. Proyectos
@@ -3879,8 +4043,9 @@ function App() {
         // 13. HSSE supervisiones
         setHsseSups((hssRows || []).map(_rowToHsse));
 
-        // 14. Conceptos / preciario (sin cifrado en v3)
-        const concsV3 = _rowsToConcs(capsRows || [], concRows || []);
+        // 14. Preciarios + conceptos / capítulos (sin cifrado en v3)
+        setPreciarios(precRows || []);
+        const concsV3 = _rowsToConcs(capsRows || [], concRows || [], precRows || []);
         if (concsV3.length > 0) {
           setConcs(concsV3);
         } else {
@@ -4187,14 +4352,37 @@ function App() {
   useEffect(() => { window._naStateRef = { hsseSups, facturas }; }, [hsseSups, facturas]);
 
   // ── v3: saveConcs sin cifrado AES ────────────────────────────────────────
-  const saveConcs = async arr => {
+  // Actualiza estado local al instante; persiste solo los conceptos que han cambiado
+  // (PATCH puntual por id) en vez de reenviar el array completo — más seguro y barato
+  // ahora que el catálogo tiene 270+ conceptos entre todos los preciarios.
+  const saveConcs = async (arr, idsModificados = null) => {
+    const prev = concs;
     setConcs(arr);
-    try { await saveConcsV3(arr); } catch(e) { console.error('[NorAcuaV3] saveConcs:', e); }
+    try {
+      const cambiados = idsModificados
+        ? arr.filter(c => idsModificados.includes(c.id))
+        : arr.filter(c => {
+            const anterior = prev.find(p => p.id === c.id);
+            return !anterior || JSON.stringify(anterior) !== JSON.stringify(c);
+          });
+      const rows = _concsToRows(cambiados);
+      for (const row of rows) {
+        const { id, ...cambios } = row;
+        await dbConceptos.patch(id, cambios);
+      }
+    } catch(e) { console.error('[NorAcuaV3] saveConcs:', e); }
   };
   const toggleActivo = async id => await saveConcs(concs.map(c => c.id === id ? {
     ...c,
     activo: c.activo === false
-  } : c));
+  } : c), [id]);
+  // Activa/desactiva un preciario ENTERO (todos sus conceptos quedan ocultos/visibles de golpe
+  // vía el flag del propio preciario — los conceptos individuales conservan su activo propio)
+  const togglePreciarioActivo = async (preciarioId, nuevoActivo) => {
+    setPreciarios(ps => ps.map(p => p.id === preciarioId ? { ...p, activo: nuevoActivo } : p));
+    try { await dbPreciarios.toggleActivo(preciarioId, nuevoActivo); }
+    catch(e) { console.error('[NorAcuaV3] togglePreciarioActivo:', e); }
+  };
   const login = async () => {
     const u = usrs[lid];
     if (!u) { setLerr("Usuario no válido"); return; }
@@ -5221,7 +5409,32 @@ function App() {
     return m;
   }, [facturas, series]);
   const proysFiltrados = proyectos.filter(p => isAdmin || p.zona);
-  const concsActivos = concs.filter(c => c.activo !== false);
+  // Conceptos disponibles para CREAR actividades: concepto activo Y preciario activo.
+  // (En la pantalla de Catálogo se usa `concs` sin este filtro, para poder ver/editar
+  // también el preciario inactivo — p.ej. revisar BP 2026 antes de activarlo.)
+  const preciariosActivosIds = new Set(preciarios.filter(p => p.activo !== false).map(p => p.id));
+  const concsActivos = concs.filter(c => c.activo !== false && (!c.preciarioId || preciariosActivosIds.has(c.preciarioId)));
+  // Estructura derivada con la misma forma que el antiguo CAP_BASE ({cap, nombre}),
+  // pero construida a partir de los capítulos reales del preciario activo — sustituye
+  // a CAP_BASE en todos los selectores de "crear/editar actividad".
+  const capsCatalogo = useMemo(() => {
+    const porCap = {};
+    concsActivos.forEach(c => {
+      if (!c.capId) return;
+      if (!porCap[c.capId]) porCap[c.capId] = { cap: c.capId, nombre: '', items: [] };
+      porCap[c.capId].items.push(c);
+    });
+    // nombre de capítulo: tomar del primer concepto que lo traiga resuelto vía capInfo
+    Object.keys(porCap).forEach(capId => {
+      const conCap = concsActivos.find(c => c.capId === capId);
+      porCap[capId].nombre = conCap?.capNombre || porCap[capId].nombre;
+    });
+    return Object.values(porCap).sort((a, b) => {
+      const na = parseFloat(a.cap), nb = parseFloat(b.cap);
+      if (!isNaN(na) && !isNaN(nb)) return na - nb;
+      return String(a.cap).localeCompare(String(b.cap));
+    });
+  }, [concsActivos]);
 
   // FIX #6 + #9: filtrado registros
   const rFiltrados = useMemo(() => {
@@ -8022,125 +8235,32 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
       sz: 11
     })));
   }))), /*#__PURE__*/React.createElement(Sec, {
-    title: `Catálogo — ${concs.filter(c => c.activo !== false).length} activos / ${concs.length} total`
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      marginBottom: 9,
-      display: "flex",
-      gap: 7,
-      alignItems: "center"
-    }
-  }, /*#__PURE__*/React.createElement("input", {
-    placeholder: "Buscar concepto...",
-    value: searchConc,
-    onChange: e => setSearchConc(e.target.value),
-    style: { flex: 1, padding: "5px 9px", border: `1px solid ${C.border}`, borderRadius: 5, fontSize: 11, fontFamily: "inherit", background: C.inputBg, outline: "none" }
-  }), /*#__PURE__*/React.createElement("span", {
-    style: {
-      fontSize: 11,
-      fontWeight: 600,
-      color: C.textSec
-    }
-  }, "Cap\xEDtulo:"), /*#__PURE__*/React.createElement("select", {
-    value: capFiltro,
-    onChange: e => setCapFiltro(e.target.value),
-    style: {
-      padding: "5px 9px",
-      border: `1px solid ${C.border}`,
-      borderRadius: 5,
-      fontSize: 11,
-      fontFamily: "inherit",
-      background: C.inputBg
-    }
-  }, /*#__PURE__*/React.createElement("option", {
-    value: ""
-  }, "Todos"), CAP_BASE.map(cap => /*#__PURE__*/React.createElement("option", {
-    key: cap.cap,
-    value: cap.cap
-  }, cap.cap, ". ", cap.nombre)))), CAP_BASE.filter(cap => !capFiltro || cap.cap === capFiltro).map(cap => {
-    const items = concs.filter(c => c.capId === cap.cap && (!searchConc || (c.nombre || "").toLowerCase().includes(searchConc.toLowerCase())));
-    if (!items.length) return null;
-    const act = items.filter(c => c.activo !== false).length;
-    return /*#__PURE__*/React.createElement("div", {
-      key: cap.cap,
-      style: {
-        marginBottom: 12
-      }
-    }, /*#__PURE__*/React.createElement("div", {
-      style: {
-        display: "flex",
-        justifyContent: "space-between",
-        fontSize: 10,
-        fontWeight: 800,
-        color: C.primary,
-        textTransform: "uppercase",
-        letterSpacing: 1,
-        padding: "3px 7px",
-        background: C.pGlow,
-        borderRadius: 4,
-        marginBottom: 3
-      }
-    }, /*#__PURE__*/React.createElement("span", null, cap.cap, ". ", cap.nombre), /*#__PURE__*/React.createElement("span", {
-      style: {
-        fontWeight: 400,
-        color: C.muted
-      }
-    }, act, "/", items.length)), items.map(c => /*#__PURE__*/React.createElement("div", {
-      key: c.id,
-      style: {
-        display: "flex",
-        alignItems: "center",
-        gap: 7,
-        padding: "4px 7px",
-        borderBottom: `1px solid ${C.border}`,
-        opacity: c.activo === false ? .6 : 1
-      }
-    }, /*#__PURE__*/React.createElement(Toggle, {
-      on: c.activo !== false,
-      onChange: () => toggleActivo(c.id)
-    }), /*#__PURE__*/React.createElement("span", {
-      style: {
-        flex: 1,
-        fontSize: 11
-      }
-    }, c.id, " \u2014 ", c.nombre), /*#__PURE__*/React.createElement("div", {
-      style: {
-        display: "flex",
-        gap: 9,
-        fontSize: 10,
-        color: C.textSec,
-        flexShrink: 0
-      }
-    }, ["CENTRO", "NORTE", "CATALUÑA"].map(z => /*#__PURE__*/React.createElement("span", {
-      key: z,
-      style: {
-        minWidth: 52,
-        textAlign: "right"
-      }
-    }, /*#__PURE__*/React.createElement("span", {
-      style: {
-        color: C.muted,
-        fontSize: 9
-      }
-    }, z, " "), c.p[z] != null ? c.p[z].toLocaleString("es-ES") + " €" : "—"))), /*#__PURE__*/React.createElement("button", {
-      onClick: () => setMEConc({
-        ...c,
-        p: {
-          ...c.p
-        }
-      }),
-      style: {
-        background: "none",
-        border: "none",
-        cursor: "pointer",
-        color: C.primary,
-        padding: "2px 3px"
-      }
-    }, /*#__PURE__*/React.createElement(Ic, {
-      d: P.edit,
-      sz: 11
-    })))));
-  })))), modulo === "facturacion" && isAdmin && /*#__PURE__*/React.createElement(React.Fragment, null, viewF === "lista" && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    title: `Cat\xE1logo \u2014 ${preciarios.filter(p => p.activo !== false).length} preciarios activos / ${preciarios.length} total`,
+    action: /*#__PURE__*/React.createElement("label", {
+      style: { display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: C.textSec, cursor: "pointer" }
+    }, /*#__PURE__*/React.createElement("input", {
+      type: "checkbox",
+      checked: precFiltroActivos,
+      onChange: e => setPrecFiltroActivos(e.target.checked)
+    }), "Solo preciarios activos")
+  }, (precFiltroActivos ? preciarios.filter(p => p.activo !== false) : preciarios).map(preciario =>
+    /*#__PURE__*/React.createElement(PreciarioCard, {
+      key: preciario.id,
+      preciario,
+      conceptos: concs.filter(c => c.preciarioId === preciario.id),
+      clientes,
+      isAdmin,
+      onTogglePreciario: togglePreciarioActivo,
+      onToggleConcepto: toggleActivo,
+      onEditConcepto: c => setMEConc({ ...c, p: { ...c.p } }),
+      search: searchConc,
+      onSearchChange: setSearchConc,
+      capFiltro,
+      onCapFiltroChange: setCapFiltro
+    })
+  ), preciarios.length === 0 && /*#__PURE__*/React.createElement("div", {
+    style: { textAlign: "center", padding: 20, color: C.muted, fontSize: 12 }
+  }, "No hay preciarios cargados."))), modulo === "facturacion" && isAdmin && /*#__PURE__*/React.createElement(React.Fragment, null, viewF === "lista" && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     style: {
       display: "grid",
       gridTemplateColumns: "repeat(4,1fr)",
@@ -9365,7 +9485,7 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
     }
   }, /*#__PURE__*/React.createElement("option", {
     value: ""
-  }, "\u2014 Filtrar por cap\xEDtulo \u2014"), CAP_BASE.map(cap => /*#__PURE__*/React.createElement("option", {
+  }, "\u2014 Filtrar por cap\xEDtulo \u2014"), capsCatalogo.map(cap => /*#__PURE__*/React.createElement("option", {
     key: cap.cap,
     value: cap.cap
   }, cap.cap, ". ", cap.nombre))), /*#__PURE__*/React.createElement("select", {
@@ -9389,7 +9509,7 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
     }
   }, /*#__PURE__*/React.createElement("option", {
     value: ""
-  }, "+ A\xF1adir concepto..."), CAP_BASE.filter(cap => !propCapFiltro || cap.cap === propCapFiltro).map(cap => {
+  }, "+ A\xF1adir concepto..."), capsCatalogo.filter(cap => !propCapFiltro || cap.cap === propCapFiltro).map(cap => {
     const items = concsActivos.filter(c => c.capId === cap.cap);
     if (!items.length) return null;
     return /*#__PURE__*/React.createElement("optgroup", {
@@ -10580,7 +10700,7 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
     }
   }, /*#__PURE__*/React.createElement("option", {
     value: ""
-  }, "Todos los cap\xEDtulos"), CAP_BASE.map(cap => /*#__PURE__*/React.createElement("option", {
+  }, "Todos los cap\xEDtulos"), capsCatalogo.map(cap => /*#__PURE__*/React.createElement("option", {
     key: cap.cap,
     value: cap.cap
   }, cap.cap, ". ", cap.nombre))), /*#__PURE__*/React.createElement("select", {
@@ -10601,7 +10721,7 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
     }
   }, /*#__PURE__*/React.createElement("option", {
     value: ""
-  }, "+ A\xF1adir concepto..."), CAP_BASE.filter(cap => !addLineaCapFiltro || cap.cap === addLineaCapFiltro).map(cap => {
+  }, "+ A\xF1adir concepto..."), capsCatalogo.filter(cap => !addLineaCapFiltro || cap.cap === addLineaCapFiltro).map(cap => {
     const items = concs.filter(c => c.capId === cap.cap);
     if (!items.length) return null;
     return /*#__PURE__*/React.createElement("optgroup", {
@@ -10622,7 +10742,7 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
     const grupos = {};
     editOferta.lineas.forEach(l => {
       const c = concs.find(x => x.id === l.conceptoId);
-      const cap = c ? CAP_BASE.find(x => x.cap === c.capId) : null;
+      const cap = c?.capId ? { cap: c.capId, nombre: c.capNombre || '' } : null;
       const key = cap?.cap || "0";
       if (!grupos[key]) grupos[key] = {
         cap,
@@ -11244,7 +11364,7 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
     }
   }, /*#__PURE__*/React.createElement("option", {
     value: ""
-  }, "Todos los cap\xEDtulos"), CAP_BASE.filter(cap => concsActivos.some(c => c.capId === cap.cap)).map(cap => /*#__PURE__*/React.createElement("option", {
+  }, "Todos los cap\xEDtulos"), capsCatalogo.filter(cap => concsActivos.some(c => c.capId === cap.cap)).map(cap => /*#__PURE__*/React.createElement("option", {
     key: cap.cap,
     value: cap.cap
   }, cap.cap, ". ", cap.nombre))), /*#__PURE__*/React.createElement("select", {
@@ -11267,7 +11387,7 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
     }
   }, /*#__PURE__*/React.createElement("option", {
     value: ""
-  }, "+ A\xF1adir concepto..."), (fRg.capFiltro ? CAP_BASE.filter(c => c.cap === fRg.capFiltro) : CAP_BASE).map(cap => {
+  }, "+ A\xF1adir concepto..."), (fRg.capFiltro ? capsCatalogo.filter(c => c.cap === fRg.capFiltro) : capsCatalogo).map(cap => {
     const items = concsActivos.filter(c => c.capId === cap.cap);
     if (!items.length) return null;
     return /*#__PURE__*/React.createElement("optgroup", {
@@ -11382,13 +11502,13 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
     onChange: e => setFRg(r => ({ ...r, capFiltro: e.target.value })),
     style: { padding: "8px 11px", border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 13, fontFamily: "inherit", background: C.inputBg, outline: "none", boxSizing: "border-box" }
   }, /*#__PURE__*/React.createElement("option", { value: "" }, "Todos los cap\xEDtulos"),
-  CAP_BASE.filter(cap => concsActivos.some(c => c.capId === cap.cap)).map(cap => /*#__PURE__*/React.createElement("option", { key: cap.cap, value: cap.cap }, cap.cap, ". ", cap.nombre))),
+  capsCatalogo.filter(cap => concsActivos.some(c => c.capId === cap.cap)).map(cap => /*#__PURE__*/React.createElement("option", { key: cap.cap, value: cap.cap }, cap.cap, ". ", cap.nombre))),
   /*#__PURE__*/React.createElement("select", {
     value: "",
     onChange: e => { if (e.target.value) addRegLinea(e.target.value); },
     style: { padding: "8px 11px", border: `1px solid ${C.primary}`, borderRadius: 6, fontSize: 13, fontFamily: "inherit", background: C.pGlow, color: C.primary, fontWeight: 600, cursor: "pointer", outline: "none", boxSizing: "border-box" }
   }, /*#__PURE__*/React.createElement("option", { value: "" }, "+ A\xF1adir concepto..."),
-  (fRg.capFiltro ? CAP_BASE.filter(c => c.cap === fRg.capFiltro) : CAP_BASE).map(cap => {
+  (fRg.capFiltro ? capsCatalogo.filter(c => c.cap === fRg.capFiltro) : capsCatalogo).map(cap => {
     const items = concsActivos.filter(c => c.capId === cap.cap);
     if (!items.length) return null;
     return /*#__PURE__*/React.createElement("optgroup", { key: cap.cap, label: `${cap.cap}. ${cap.nombre}` },
@@ -11509,7 +11629,7 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
         fontSize: 12, fontFamily: "inherit", background: C.inputBg, outline: "none"
       }
     }, /*#__PURE__*/React.createElement("option", { value: "" }, "— Capítulo —"),
-    CAP_BASE.filter(cap => concsActivos.some(c2 => c2.capId === cap.cap)).map(cap =>
+    capsCatalogo.filter(cap => concsActivos.some(c2 => c2.capId === cap.cap)).map(cap =>
       /*#__PURE__*/React.createElement("option", { key: cap.cap, value: cap.cap }, cap.cap + ". " + cap.nombre)
     )), /*#__PURE__*/React.createElement("select", {
       value: l.conceptoId || "",
@@ -11698,7 +11818,7 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
     }
   }, /*#__PURE__*/React.createElement("option", {
     value: ""
-  }, "Seleccionar..."), CAP_BASE.map(cap => {
+  }, "Seleccionar..."), capsCatalogo.map(cap => {
     const items = concsActivos.filter(c => c.capId === cap.cap);
     if (!items.length) return null;
     return /*#__PURE__*/React.createElement("optgroup", {
@@ -11770,8 +11890,8 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
       marginBottom: 8
     }
   }, /*#__PURE__*/React.createElement(Inp, {
-    label: "ID",
-    value: mEConc.id,
+    label: "C\xF3digo",
+    value: mEConc.codigo || mEConc.id,
     disabled: true
   }), /*#__PURE__*/React.createElement(Inp, {
     label: "Nombre",
@@ -11795,45 +11915,52 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
       textTransform: "uppercase",
       letterSpacing: .7
     }
-  }, "Precios por zona (\u20AC)"), /*#__PURE__*/React.createElement("div", {
+  }, "Precios por zona (\u20AC) \u2014 OTROS = m\xE1ximo de las 4 zonas, no editable"), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "grid",
       gridTemplateColumns: "repeat(5,1fr)",
       gap: 7
     }
-  }, ZONAS.map(z => /*#__PURE__*/React.createElement("div", {
-    key: z
-  }, /*#__PURE__*/React.createElement("label", {
-    style: {
-      display: "block",
-      fontSize: 9,
-      color: C.muted,
-      marginBottom: 2,
-      textTransform: "uppercase"
-    }
-  }, z), /*#__PURE__*/React.createElement("input", {
-    type: "number",
-    value: mEConc.p[z] ?? "",
-    onChange: e => setMEConc(c => ({
-      ...c,
-      p: {
-        ...c.p,
-        [z]: e.target.value === "" ? null : Number(e.target.value)
+  }, ZONAS.map(z => {
+    const esOtros = z === "OTROS";
+    const definidos = ["CENTRO", "NORTE", "CATALUÑA", "BALEARES"].map(zz => mEConc.p[zz]).filter(v => v != null && !isNaN(v));
+    const valorOtros = definidos.length ? Math.max(...definidos) : null;
+    return /*#__PURE__*/React.createElement("div", {
+      key: z
+    }, /*#__PURE__*/React.createElement("label", {
+      style: {
+        display: "block",
+        fontSize: 9,
+        color: C.muted,
+        marginBottom: 2,
+        textTransform: "uppercase"
       }
-    })),
-    style: {
-      width: "100%",
-      padding: "6px 5px",
-      border: `1px solid ${C.border}`,
-      borderRadius: 5,
-      fontSize: 12,
-      fontFamily: "inherit",
-      background: C.inputBg,
-      outline: "none",
-      textAlign: "right",
-      boxSizing: "border-box"
-    }
-  }))))), /*#__PURE__*/React.createElement("div", {
+    }, z), /*#__PURE__*/React.createElement("input", {
+      type: "number",
+      value: esOtros ? (valorOtros ?? "") : (mEConc.p[z] ?? ""),
+      disabled: esOtros,
+      onChange: esOtros ? undefined : (e => setMEConc(c => ({
+        ...c,
+        p: {
+          ...c.p,
+          [z]: e.target.value === "" ? null : Number(e.target.value)
+        }
+      }))),
+      style: {
+        width: "100%",
+        padding: "6px 5px",
+        border: `1px solid ${C.border}`,
+        borderRadius: 5,
+        fontSize: 12,
+        fontFamily: "inherit",
+        background: esOtros ? C.cardL : C.inputBg,
+        outline: "none",
+        textAlign: "right",
+        boxSizing: "border-box",
+        color: esOtros ? C.muted : "inherit"
+      }
+    }));
+  })))), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       alignItems: "center",
