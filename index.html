@@ -230,8 +230,10 @@ function _rowToFact(row) {
     clienteId: row.cliente_id || '',
     clienteNombre: '',  // se resuelve desde clientes[]
     serieId: row.serie_id || '',
-    concepto: row.observaciones || '',
+    concepto: row.observaciones || '',     // alias para compatibilidad con guardado
+    observaciones: row.observaciones || '', // campo real que usa la UI (PDF, tabla, etc.)
     po: row.po_ref || '',
+    poRef: row.po_ref || '',               // alias usado en tabla de export CSV
     lineas: [],
     notas: '',
     creadoEn: row.creado_en || row.fecha,
@@ -250,6 +252,10 @@ function _rowToOferta(row) {
   // Mapear estados reales de BD a estados esperados por la UI
   const estadoMap = { 'activa': 'Enviada', 'cerrada': 'Aceptada', 'cancelada': 'Rechazada', 'borrador': 'Borrador' };
   const estado = estadoMap[row.estado] || row.estado || 'Borrador';
+  // 'referencia' es el campo canónico en metadatos; algunas ofertas viejas usan 'ref'
+  const ref = m.referencia || m.ref || '';
+  // 'emplazamiento' es el campo canónico; algunas ofertas viejas usan 'estacion'
+  const emplazamiento = m.emplazamiento || m.estacion || '';
   return {
     id: row.id,
     numero: row.codigo || m.numero || '',
@@ -257,27 +263,34 @@ function _rowToOferta(row) {
     estado: estado,
     fecha: m.fecha || row.creado_en?.slice(0,10) || '',
     clienteId: row.cliente_id || '',
-    estacion: m.estacion || '',
+    estacion: emplazamiento,
+    emplazamiento: emplazamiento,
     zona: m.zona || '',
     responsable: m.responsable || '',
     lineas: Array.isArray(m.lineas) ? m.lineas : [],
     version: m.version || 1,
-    ref: m.ref || '',
+    ref: ref,
+    referencia: ref,
     notas: m.notas || '',
     creadoEn: row.creado_en || '',
-    po: row.po || '',
-    importeTotal: row.importe_total || null
+    po: row.po || m.po || '',
+    importeTotal: row.importe_total || null,
+    firmanteCliente: m.firmanteCliente || '',
+    firmanteNorAcua: m.firmanteNorAcua || '',
+    formaPago: m.formaPago || ''
   };
 }
 
 // Convierte fila v3 de na_hsse_supervisiones al formato interno React
 function _rowToHsse(row) {
   // Extended fields in datos_supervision — keys come from migrated data
-  // Real keys observed: site, tipo, empresa, encargo, importe, comentarios, incidencias,
-  //                     pctAuditoria, motivoSupervision, obraConSupervision
   const d = (row.datos_supervision && typeof row.datos_supervision === 'object') ? row.datos_supervision : {};
   const horas = row.horas_facturables != null ? String(row.horas_facturables) : '';
   const estadoMap = { 'aprobada': 'aprobado', 'completada': 'anulado', 'pendiente': 'pendiente' };
+  // tecnico_id apunta a na_usuarios — resolver nombre desde el mapa global
+  const tecnicoNombre = (window._naTecnicoNameMap && row.tecnico_id)
+    ? (window._naTecnicoNameMap[row.tecnico_id] || d.supervisor || '')
+    : (d.supervisor || '');
   return {
     id: row.id,
     site: d.site || '',
@@ -287,7 +300,8 @@ function _rowToHsse(row) {
     fecha: row.fecha,
     horas: horas,
     horasAdmin: row.horas_facturables != null ? row.horas_facturables : null,
-    supervisor: d.supervisor || '',
+    supervisor: tecnicoNombre,
+    tecnicoId: row.tecnico_id || null,
     encargo: d.encargo || '',
     zona: row.zona || '',
     incidencias: d.incidencias != null ? String(d.incidencias) : '',
@@ -295,6 +309,8 @@ function _rowToHsse(row) {
     empresa: d.empresa || '',
     comentarios: d.comentarios || '',
     importe: d.importe != null ? d.importe : null,
+    precioHora: row.precio_hora != null ? row.precio_hora : null,
+    conceptoId: row.concepto_id || null,
     estado: estadoMap[row.estado] || row.estado || 'pendiente',
     facturaId: d.facturaId || null,
     createdAt: row.creado_en || row.fecha
@@ -3937,22 +3953,31 @@ function App() {
         setHistorico(histActividad.map(_rowToInforme));
 
         // 6b. Histórico HSSE — informes con nombre 'INF-HSSE-...' dentro de na_informes
+        // Las supervisiones vinculadas se calculan por rango de fecha (periodo_desde..periodo_hasta)
         const hsseInformes = (histRows || []).filter(r => (r.nombre || '').startsWith('INF-HSSE-'));
-        const hsseHistV3 = hsseInformes.map(r => ({
-          id: r.id,
-          nom: r.nombre || r.id,
-          html: r.html_cache || '',
-          desde: r.periodo_desde || '',
-          hasta: r.periodo_hasta || '',
-          po: '',
-          periodo: (r.periodo_desde && r.periodo_hasta) ? (r.periodo_desde + ' / ' + r.periodo_hasta) : '',
-          numSups: 0,
-          totalHoras: 0,
-          totalImporte: r.importe_total || 0,
-          supIds: [],
-          facturado: !!r.factura_id,
-          creadoEn: r.creado_en || ''
-        }));
+        const hsseHistV3 = hsseInformes.map(r => {
+          // Supervisiones cuya fecha cae dentro del periodo del informe
+          const sups = (hssRows || []).filter(s => {
+            if (!s.fecha || !r.periodo_desde || !r.periodo_hasta) return false;
+            return s.fecha >= r.periodo_desde && s.fecha <= r.periodo_hasta;
+          });
+          const totalHoras = sups.reduce((acc, s) => acc + (s.horas_facturables || 0), 0);
+          return {
+            id: r.id,
+            nom: r.nombre || r.id,
+            html: r.html_cache || '',
+            desde: r.periodo_desde || '',
+            hasta: r.periodo_hasta || '',
+            po: '',
+            periodo: (r.periodo_desde && r.periodo_hasta) ? (r.periodo_desde + ' / ' + r.periodo_hasta) : '',
+            numSups: sups.length,
+            totalHoras: totalHoras,
+            totalImporte: r.importe_total || 0,
+            supIds: sups.map(s => s.id),
+            facturado: !!r.factura_id,
+            creadoEn: r.creado_en || ''
+          };
+        });
         setHsseHist(hsseHistV3);
 
         // 7. Clientes
@@ -3963,7 +3988,7 @@ function App() {
           codigoRef: r.codigo || '',
           direccion: (r.direccion_linea1 || '') + (r.direccion_linea2 ? ', ' + r.direccion_linea2 : ''),
           poblacion: (r.cp ? r.cp + ' ' : '') + (r.ciudad || ''),
-          iban: '',
+          iban: r.iban || '',
           emailFact: r.email_facturacion || '',
           diasVto: r.dias_vto_defecto || 30,
           metodoPago: r.metodo_pago_defecto || 'Transferencia bancaria',
