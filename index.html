@@ -4279,32 +4279,6 @@ function App() {
     }
   }, [historico, loading]);
 
-  // Persistencia de informes HSSE — misma tabla na_informes, distinguidos por prefijo 'INF-HSSE-' en nombre
-  useEffect(() => {
-    if (!loading && hsseHist.length > 0) {
-      clearTimeout(window._bkHsseHist);
-      window._bkHsseHist = setTimeout(async () => {
-        try {
-          const rows = hsseHist.map(inf => ({
-            id: inf.id,
-            nombre: inf.nom || inf.id,
-            proyecto_id: null,
-            periodo_desde: inf.desde || null,
-            periodo_hasta: inf.hasta || null,
-            importe_total: inf.totalImporte || null,
-            estado: inf.facturado ? 'facturado' : 'borrador',
-            factura_id: null,
-            html_cache: inf.html || '',
-            creado_en: inf.creadoEn || new Date().toISOString()
-          }));
-          for (let i = 0; i < rows.length; i += 50) {
-            await _sb('/rest/v1/na_informes', { method: 'POST', body: JSON.stringify(rows.slice(i, i+50)), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } });
-          }
-        } catch(e) { console.error('[NorAcuaV3] persistencia hsseHist:', e); }
-      }, 1000);
-    }
-  }, [hsseHist, loading]);
-
   useEffect(() => {}, [deletedRegIds, deletedHistIds, loading]);
 
   useEffect(() => {
@@ -4431,20 +4405,23 @@ function App() {
 
   useEffect(() => {}, [hsseCfg, hsseInfCounter, loading]);
 
-  // hsseHist: persistir en na_informes con tipo='hsse'
+  // hsseHist: persistir en na_informes (nombre con prefijo INF-HSSE- para distinguirlos)
   useEffect(() => {
     if (!loading && hsseHist.length > 0) {
       clearTimeout(window._bkHsseHist);
       window._bkHsseHist = setTimeout(async () => {
         try {
+          const clienteBP = hsseCfg.clienteIdBP || clientes.find(c => c.codigoRef === 'BP')?.id || null;
           const rows = hsseHist.map(inf => ({
             id: inf.id,
-            html: inf.html || '',
-            periodo: inf.periodo || (inf.desde && inf.hasta ? inf.desde + '/' + inf.hasta : ''),
-            po: JSON.stringify({ nom: inf.nom, desde: inf.desde, hasta: inf.hasta, po: inf.po || '', numSups: inf.numSups, totalHoras: inf.totalHoras, totalImporte: inf.totalImporte, facturado: inf.facturado }),
-            reg_ids: JSON.stringify(inf.supIds || []),
-            creado_en: inf.creadoEn || new Date().toISOString(),
-            tipo: 'hsse'
+            nombre: inf.nom || ('INF-HSSE-' + (inf.desde || '').slice(0,4) + '-' + String(inf.id).slice(-3)),
+            cliente_id: clienteBP,
+            periodo_desde: inf.desde || null,
+            periodo_hasta: inf.hasta || null,
+            estado: inf.facturado ? 'facturado' : 'borrador',
+            importe_total: inf.totalImporte != null ? inf.totalImporte : null,
+            html_cache: inf.html || '',
+            creado_en: inf.creadoEn || new Date().toISOString()
           }));
           for (let i = 0; i < rows.length; i += 20) {
             await _sb('/rest/v1/na_informes', { method: 'POST', body: JSON.stringify(rows.slice(i, i+20)), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } });
@@ -13199,6 +13176,13 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
       hsseHist.length===0&&React.createElement("div",{style:{textAlign:"center",padding:30,color:"#8a9199"}},"No hay informes guardados."),
       React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:8}},
         hsseHist.map(function(inf){
+          var getInfHtml = function() {
+            if (inf.html) return inf.html;
+            // Informe migrado sin html_cache: regenerar al vuelo desde las supervisiones vinculadas
+            var supsInf = hsseSups.filter(function(s){ return (inf.supIds||[]).includes(s.id); })
+              .sort(function(a,b){ return (a.fecha||"").localeCompare(b.fecha||""); });
+            return genInfHSSE({sups:supsInf, desde:inf.desde, hasta:inf.hasta, po:inf.po||"", hsseCfg:hsseCfg, trabs:trabs});
+          };
           return React.createElement("div",{key:inf.id,style:{background:"#fff",borderRadius:10,border:"1px solid #dde2e8",padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}},
             React.createElement("div",null,
               React.createElement("div",{style:{display:"flex",gap:8,alignItems:"center"}},
@@ -13208,8 +13192,8 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
               React.createElement("div",{style:{fontSize:11,color:"#8a9199",marginTop:2}},inf.periodo+(inf.po?" · PO: "+inf.po:"")+" · "+inf.numSups+" supervisiones · "+inf.totalHoras+"h")
             ),
             React.createElement("div",{style:{display:"flex",gap:6}},
-              React.createElement("button",{onClick:function(){setMHssePrev({html:inf.html,nom:inf.nom,readonly:true});},style:{background:"transparent",border:"1px solid #dde2e8",borderRadius:5,padding:"3px 8px",cursor:"pointer",fontSize:11}},"Ver"),
-              React.createElement("button",{onClick:function(){abrirPDF(inf.html,inf.nom);},style:{background:"transparent",border:"1px solid #dde2e8",borderRadius:5,padding:"3px 8px",cursor:"pointer",fontSize:11}},"⬇ Descargar"),
+              React.createElement("button",{onClick:function(){setMHssePrev({html:getInfHtml(),nom:inf.nom,readonly:true});},style:{background:"transparent",border:"1px solid #dde2e8",borderRadius:5,padding:"3px 8px",cursor:"pointer",fontSize:11}},"Ver"),
+              React.createElement("button",{onClick:function(){abrirPDF(getInfHtml(),inf.nom);},style:{background:"transparent",border:"1px solid #dde2e8",borderRadius:5,padding:"3px 8px",cursor:"pointer",fontSize:11}},"⬇ Descargar"),
               React.createElement("button",{
                 onClick:function(){
                   var po=inf.po||hsseCfg.poAnual||"";
