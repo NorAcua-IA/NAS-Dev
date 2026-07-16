@@ -257,7 +257,7 @@ function _rowToOferta(row) {
   // na_ofertas: metadatos puede ser null en datos migrados
   const m = (row.metadatos && typeof row.metadatos === 'object') ? row.metadatos : {};
   // Mapear estados reales de BD a estados esperados por la UI
-  const estadoMap = { 'activa': 'Enviada', 'cerrada': 'Aceptada', 'cancelada': 'Rechazada', 'borrador': 'Borrador' };
+  const estadoMap = { 'activa': 'Enviada', 'cerrada': 'Aceptada', 'cancelada': 'Rechazada', 'borrador': 'Borrador', 'facturada': 'Facturada', 'pendiente': 'Borrador' };
   const estado = estadoMap[row.estado] || row.estado || 'Borrador';
   // 'referencia' es el campo canónico en metadatos; algunas ofertas viejas usan 'ref'
   const ref = m.referencia || m.ref || '';
@@ -494,9 +494,13 @@ async function saveRegistroV3(reg) {
       id: l.id || (reg.id + '_l' + i),
       registro_id: reg.id,
       concepto_id: l.conceptoId || null,
-      concepto_nombre: l.conceptoNombre || l.nombre || '',
       cantidad: parseFloat(l.cantidad) || 1,
+      cantidad_certif: l.cantCertif != null ? l.cantCertif : null,
       precio_unitario: l.precioUnitario != null ? l.precioUnitario : null,
+      descuento_pct: l.descuento || 0,
+      observaciones: l.observaciones || l.comentario || '',
+      certif_enviada: !!l.certifEnviada,
+      certif_aprobada: !!l.certifAprobada,
       orden: i
     }));
     if (lineas.length) await _sb('/rest/v1/na_lineas_registro', {
@@ -2394,8 +2398,11 @@ function calcFactTotales(f) {
     // Sin líneas: no hay nada que recalcular, se respeta lo que traía la cabecera
     return { baseImponible: f.baseImponible, totalIva: f.totalIva, total: f.total };
   }
-  const base = f.lineas.reduce((s, l) => s + calcFactLinea(l), 0);
-  const totalIva = f.lineas.reduce((s, l) => s + calcFactLinea(l) * ((Number(l.iva) || 21) / 100), 0);
+  // Las líneas de cabecera (esCabecera) son agrupadores visuales sin precio propio y
+  // se excluyen del cálculo — mismo criterio que calcDocTotal, usada en el resto de la UI.
+  const lineasFacturables = f.lineas.filter(l => !l.esCabecera);
+  const base = lineasFacturables.reduce((s, l) => s + calcFactLinea(l), 0);
+  const totalIva = lineasFacturables.reduce((s, l) => s + calcFactLinea(l) * ((Number(l.iva) || 21) / 100), 0);
   return {
     baseImponible: Math.round(base * 100) / 100,
     totalIva: Math.round(totalIva * 100) / 100,
@@ -3267,7 +3274,7 @@ function genInfHSSE({ sups, desde, hasta, po, hsseCfg }) {
   const totalHoras = sups.reduce((a,s) => a + Number(s.horasAdmin ?? s.horas ?? 0), 0);
   const totalImporte = sups.reduce((a,s) => {
     const h = Number(s.horasAdmin ?? s.horas ?? 0);
-    const p = hsseCfg && hsseCfg.preciosPorZona && hsseCfg.preciosPorZona[s.zona] ? hsseCfg.preciosPorZona[s.zona] : 0;
+    const p = s.precioHora != null ? s.precioHora : 0;
     return a + h * p;
   }, 0);
 
@@ -3278,7 +3285,7 @@ function genInfHSSE({ sups, desde, hasta, po, hsseCfg }) {
     const zl = zonaLabel(s.zona);
     if (!zonas[zl]) zonas[zl] = { horas: 0, importe: 0 };
     const h = Number(s.horasAdmin ?? s.horas ?? 0);
-    const precio = hsseCfg && hsseCfg.preciosPorZona && hsseCfg.preciosPorZona[s.zona] ? hsseCfg.preciosPorZona[s.zona] : 0;
+    const precio = s.precioHora != null ? s.precioHora : 0;
     zonas[zl].horas += h;
     zonas[zl].importe += h * precio;
   });
@@ -3287,7 +3294,7 @@ function genInfHSSE({ sups, desde, hasta, po, hsseCfg }) {
     .sort((a,b) => (a.fecha||"").localeCompare(b.fecha||""))
     .map((s, i) => {
       const h = Number(s.horasAdmin ?? s.horas ?? 0);
-      const precio = hsseCfg && hsseCfg.preciosPorZona && hsseCfg.preciosPorZona[s.zona] ? hsseCfg.preciosPorZona[s.zona] : 0;
+      const precio = s.precioHora != null ? s.precioHora : 0;
       const importe = h * precio;
       const bg = i % 2 === 0 ? "#ffffff" : "#f5f8fc";
       const incCell = s.incidencias === "S\u00ED"
@@ -3452,6 +3459,7 @@ table.sum tfoot td{background:#dce8f3!important;font-weight:700;color:#1c3e5e;pa
 function genPDFFactura({
   doc,
   cliente,
+  serie,
   poRef
 }) {
   const {
@@ -3535,7 +3543,7 @@ ${ivaRows}
 <tr class="grand"><td style="text-align:right">TOTAL FACTURA:</td><td style="text-align:right">${fmtN(total)}</td></tr>
 </table></div>
 <div class="pago"><div class="pago-h">Datos de pago</div><div class="pago-g">
-<div class="pago-c"><label>Cuenta de pago</label><span>${doc.iban || cliente?.iban || "—"}</span></div>
+<div class="pago-c"><label>Cuenta de pago</label><span>${doc.iban || serie?.iban || cliente?.iban || "—"}</span></div>
 <div class="pago-c"><label>Vencimiento</label><span>${fmtD(doc.fechaVto)}</span></div>
 <div class="pago-c"><label>Importe</label><span>${fmtN(total)}</span></div>
 <div class="pago-c"><label>Método de pago</label><span>${doc.metodoPago || "—"}</span></div>
@@ -3985,7 +3993,13 @@ function App() {
               conceptoNombre: l.concepto_nombre || '',
               nombre: l.concepto_nombre || '',
               cantidad: l.cantidad != null ? String(l.cantidad) : '1',
-              precioUnitario: l.precio_unitario != null ? l.precio_unitario : null
+              cantCertif: l.cantidad_certif != null ? l.cantidad_certif : null,
+              precioUnitario: l.precio_unitario != null ? l.precio_unitario : null,
+              descuento: l.descuento_pct || 0,
+              observaciones: l.observaciones || '',
+              comentario: l.observaciones || '',
+              certifEnviada: !!l.certif_enviada,
+              certifAprobada: !!l.certif_aprobada
             });
           });
         }
@@ -4057,6 +4071,7 @@ function App() {
           id: r.id,
           codigo: r.codigo || '',
           nombre: r.nombre || '',
+          iban: r.iban || '',
           contFact: r.cont_factura || 0,
           contSupl: r.cont_suplido || 0,
           contAbon: r.cont_abono || 0,
@@ -6077,7 +6092,7 @@ function App() {
       /* 5. HSSE aprobadas sin facturar */
       var hsseNoFact = hsseSups.filter(function(s){return s.estado==="aprobado"&&s.estadoFact!=="facturado";});
       var hsseHorasNF = hsseNoFact.reduce(function(a,s){return a+Number(s.horasAdmin||s.horas||0);},0);
-      var hsseImporteNF = hsseNoFact.reduce(function(a,s){var p=hsseCfg.preciosPorZona&&hsseCfg.preciosPorZona[s.zona]?hsseCfg.preciosPorZona[s.zona]:0;return a+Number(s.horasAdmin||s.horas||0)*p;},0);
+      var hsseImporteNF = hsseNoFact.reduce(function(a,s){var p=s.precioHora!=null?s.precioHora:0;return a+Number(s.horasAdmin||s.horas||0)*p;},0);
 
       /* 6. Facturas borrador */
       var factBorrador = facturas.filter(function(f){return f.estado==="Borrador";});
@@ -8583,8 +8598,8 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
                 )
               ),
               React.createElement("div",{style:{display:"flex",alignItems:"center",gap:4,flexShrink:0}},
-                React.createElement(Btn,{sm:true,variant:"ghost",onClick:function(){setMPrev({html:genPDFFactura({doc:f,cliente:cl,poRef:f.poRef}),nom:f.numero});}},React.createElement(Ic,{d:P.eye,sz:10})),
-                React.createElement(Btn,{sm:true,variant:"ghost",onClick:function(){abrirPDF(genPDFFactura({doc:f,cliente:cl,poRef:f.poRef}),(f.numero||"FA-001").split("-").slice(0,2).map(function(v,i){return i===1?v.padStart(3,"0"):v;}).join("-")+"-"+(f.fecha||"").substring(2,4));}},React.createElement(Ic,{d:P.dl,sz:10})," PDF"),
+                React.createElement(Btn,{sm:true,variant:"ghost",onClick:function(){setMPrev({html:genPDFFactura({doc:f,cliente:cl,serie:gS(f.serieId),poRef:f.poRef}),nom:f.numero});}},React.createElement(Ic,{d:P.eye,sz:10})),
+                React.createElement(Btn,{sm:true,variant:"ghost",onClick:function(){abrirPDF(genPDFFactura({doc:f,cliente:cl,serie:gS(f.serieId),poRef:f.poRef}),(f.numero||"FA-001").split("-").slice(0,2).map(function(v,i){return i===1?v.padStart(3,"0"):v;}).join("-")+"-"+(f.fecha||"").substring(2,4));}},React.createElement(Ic,{d:P.dl,sz:10})," PDF"),
                 React.createElement(Btn,{sm:true,variant:"ghost",onClick:function(){setEditDoc({...f,lineas:[...(f.lineas||[])]});setEditMode("edit");setFechaWarn(null);setViewF("editor");}},React.createElement(Ic,{d:P.edit,sz:10})),
                 f.estado==="Borrador"&&React.createElement(Btn,{sm:true,variant:"ghost",onClick:function(){cambEst(f.id,"Enviada",f);},style:{color:C.primary}},React.createElement(Ic,{d:P.mail,sz:10})," Enviar"),
                 f.estado==="Enviada"&&React.createElement(Btn,{sm:true,variant:"success",onClick:function(){cambEst(f.id,"Cobrada",null);}},"✓ Cobrada"),
@@ -8651,6 +8666,7 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
         html: genPDFFactura({
           doc: editDoc,
           cliente: gCL(editDoc.clienteId),
+          serie: gS(editDoc.serieId),
           poRef: editDoc.poRef
         }),
         nom: editDoc.numero
@@ -9330,6 +9346,7 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
         html: genPDFFactura({
           doc: f,
           cliente: cl,
+          serie: gS(f.serieId),
           poRef: f.poRef
         }),
         nom: f.numero
@@ -9343,6 +9360,7 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
       onClick: () => abrirPDF(genPDFFactura({
         doc: f,
         cliente: cl,
+        serie: gS(f.serieId),
         poRef: f.poRef
       }), (f.numero||'FA-001').split('-').slice(0,2).map((v,i)=>i===1?v.padStart(3,'0'):v).join('-')+'-'+(f.fecha||'').substring(2,4))
     }, /*#__PURE__*/React.createElement(Ic, {
@@ -12786,7 +12804,7 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
                     if(nPend>0)parts.push("⏳ "+nPend+" ("+hPend+"h)");
                     if(nAnu>0)parts.push("✗ "+nAnu);
                     // FIX v2.7.1: importe total del mes en cabecera colapsada
-                    var totalImporte=sups.reduce(function(a,s){var p=hsseCfg.preciosPorZona&&hsseCfg.preciosPorZona[s.zona]?hsseCfg.preciosPorZona[s.zona]:0;return a+Number(s.horasAdmin||s.horas||0)*p;},0);
+                    var totalImporte=sups.reduce(function(a,s){var p=s.precioHora!=null?s.precioHora:0;return a+Number(s.horasAdmin||s.horas||0)*p;},0);
                     var importeStr=totalImporte>0?" · "+fmtE(totalImporte):"";
                     return React.createElement("span",{style:{fontSize:11,opacity:.85}},sups.length+" sup · "+totalH+"h"+importeStr+(parts.length?" | "+parts.join(" · "):"")); 
                   })(),
@@ -12797,7 +12815,7 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
                 sups.map(function(s,i){
                   var eCol=s.estado==="aprobado"?"#1a9e7a":s.estado==="anulado"?"#d03030":"#d48a10";
                   var eLab=s.estado==="aprobado"?"Aprobado":s.estado==="anulado"?"Anulado":"Pendiente";
-                  var precio=hsseCfg.preciosPorZona&&hsseCfg.preciosPorZona[s.zona]?hsseCfg.preciosPorZona[s.zona]:0;
+                  var precio=s.precioHora!=null?s.precioHora:0;
                   var importe=Number(s.horasAdmin||s.horas||0)*precio;
                   var hsseBgReg=s.estado==="aprobado"?"#f0fdf4":s.estado==="anulado"?"#fff1f2":"#fffbeb";
                   var hsseBdReg=s.estado==="aprobado"?"1px solid #86efac":s.estado==="anulado"?"1px solid #fca5a5":"1px solid #fde68a";
@@ -12947,7 +12965,7 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
                     if(nApro>0)parts.push("✓ "+nApro+" ("+hApro+"h)");
                     if(nPend>0)parts.push("⏳ "+nPend+" ("+hPend+"h)");
                     // FIX v2.7.1: importe total del mes en cabecera colapsada
-                    var totalImporte=sups.reduce(function(a,s){var p=hsseCfg.preciosPorZona&&hsseCfg.preciosPorZona[s.zona]?hsseCfg.preciosPorZona[s.zona]:0;return a+Number(s.horasAdmin||s.horas||0)*p;},0);
+                    var totalImporte=sups.reduce(function(a,s){var p=s.precioHora!=null?s.precioHora:0;return a+Number(s.horasAdmin||s.horas||0)*p;},0);
                     var importeStr=totalImporte>0?" · "+fmtE(totalImporte):"";
                     return React.createElement("span",{style:{fontSize:11,opacity:.85}},sups.length+" sup · "+totalH+"h"+importeStr+(parts.length?" | "+parts.join(" · "):"")); 
                   })(),
@@ -12956,7 +12974,7 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
               ),
               isOpen&&React.createElement("div",{style:{padding:"4px 0"}},
                 sups.map(function(s,i){
-                  var precio=hsseCfg.preciosPorZona&&hsseCfg.preciosPorZona[s.zona]?hsseCfg.preciosPorZona[s.zona]:0;
+                  var precio=s.precioHora!=null?s.precioHora:0;
                   var importe=Number(s.horasAdmin||s.horas||0)*precio;
                   var isPend=s.estado==="pendiente";
                   var hsseBgRev=s.estado==="aprobado"?"#f0fdf4":s.estado==="anulado"?"#fff1f2":"#fffbeb";
@@ -13143,7 +13161,7 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
             return s.fecha>=fInfH.desde&&s.fecha<=fInfH.hasta;
           });
           var totalH=sups.reduce(function(a,s){return a+Number(s.horasAdmin||s.horas||0);},0);
-          var totalE=sups.reduce(function(a,s){var p=hsseCfg.preciosPorZona&&hsseCfg.preciosPorZona[s.zona]?hsseCfg.preciosPorZona[s.zona]:0;return a+Number(s.horasAdmin||s.horas||0)*p;},0);
+          var totalE=sups.reduce(function(a,s){var p=s.precioHora!=null?s.precioHora:0;return a+Number(s.horasAdmin||s.horas||0)*p;},0);
           return React.createElement("div",{style:{fontSize:11,color:"#8a9199",margin:"10px 0"}},sups.length+" supervisiones · "+totalH+"h · ",React.createElement("strong",{style:{color:"#1a1a1a"}},fmtE(totalE)));
         })(),
         React.createElement("button",{
@@ -13247,7 +13265,7 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
                   var _sups=mHssePrev.sups||[];
                   var _cfg=hsseCfg;
                   var _totalH=_sups.reduce(function(a,s){return a+Number(s.horasAdmin||s.horas||0);},0);
-                  var _totalE=_sups.reduce(function(a,s){var p=_cfg.preciosPorZona&&_cfg.preciosPorZona[s.zona]?_cfg.preciosPorZona[s.zona]:0;return a+Number(s.horasAdmin||s.horas||0)*p;},0);
+                  var _totalE=_sups.reduce(function(a,s){var p=s.precioHora!=null?s.precioHora:0;return a+Number(s.horasAdmin||s.horas||0)*p;},0);
                   var entry={id:uuid(),nom:nomFinal,html:mHssePrev.html,desde:mHssePrev.desde,hasta:mHssePrev.hasta,po:mHssePrev.po||"",periodo:fmtD(mHssePrev.desde)+"→"+fmtD(mHssePrev.hasta),numSups:_sups.length,totalHoras:_totalH,totalImporte:_totalE,supIds:_sups.map(function(s){return s.id;}),facturado:false,creadoEn:new Date().toISOString()};
                   setHsseHist(function(p){return [entry].concat(p.slice(0,49));});
                   setHsseInfCounter(function(n){return n+1;});
