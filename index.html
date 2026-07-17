@@ -59,9 +59,11 @@ const dbResponsables = {
 
 // Usuarios (login + lista técnicos)
 const dbUsuarios = {
-  getAll: () => _sb('/rest/v1/na_usuarios?activo=eq.true&order=nombre.asc&limit=100'),
-  getByLogin: nombre => _sb('/rest/v1/na_usuarios?nombre=eq.' + encodeURIComponent(nombre) + '&limit=1'),
-  updateHash: (id, hash) => _sb('/rest/v1/na_usuarios?id=eq.' + id, { method: 'PATCH', body: JSON.stringify({ password_hash: hash }) })
+  getAll: () => _sb('/rest/v1/na_usuarios?activo=eq.true&order=nombre.asc&limit=100&select=id,nombre,email,rol,activo,zonas,ultima_sesion,creado_en,legacy_nombre'),
+  getByLogin: nombre => _sb('/rest/v1/na_usuarios?nombre=eq.' + encodeURIComponent(nombre) + '&limit=1&select=id,nombre,email,rol,activo,zonas,ultima_sesion,creado_en,legacy_nombre'),
+  updateHash: (id, hash) => _sb('/rest/v1/na_usuarios?id=eq.' + id, { method: 'PATCH', body: JSON.stringify({ password_hash: hash }) }),
+  // v3.1: verificación de login movida a la BD (RPC security definer) — el hash ya no sale del servidor
+  verificarLogin: (nombre, password) => _sb('/rest/v1/rpc/verificar_login', { method: 'POST', body: JSON.stringify({ p_nombre: nombre, p_password: password }) })
 };
 
 // Series de facturación
@@ -836,10 +838,6 @@ const EMPRESA = {
   dir2: "28224 Pozuelo de Alarcón (Madrid)",
   email: "noracua@noracua.com",
   web: "www.noracua.com"
-};
-const DEF_PWS = {
-  daniel: "2def15a4347594d115032ebc00268ad35dc733114efe16388f80293ac4661ea8",
-  ignacio: "4a2502c4914732430b54a59f87cbfca2ebd296d5c226d68cb13fd739d398d764"
 };
 const DEF_USERS = {
   daniel: {
@@ -3931,9 +3929,10 @@ function App() {
             usrsMap[u.legacy_nombre] = entry;
           }
         });
-        // Solo añadir DEF_USERS si el usuario NO existe en BD (admin offline fallback)
+        // Solo añadir DEF_USERS si el usuario NO existe en BD (referencia de nombre/rol únicamente;
+        // v3.1: ya no permiten login — la verificación de contraseña requiere BD accesible)
         Object.entries(DEF_USERS).forEach(([k, v]) => {
-          if (!usrsMap[k]) usrsMap[k] = { ...v, hash: DEF_PWS[k] };
+          if (!usrsMap[k]) usrsMap[k] = { ...v };
         });
         setUsrs(usrsMap);
         setHashesReady(true);
@@ -4467,9 +4466,10 @@ function App() {
   const login = async () => {
     const u = usrs[lid];
     if (!u) { setLerr("Usuario no válido"); return; }
-    if (!u.hash) { setLerr("Cargando..."); return; }
-    const h = await sha256(lpw);
-    if (h !== u.hash) { setLerr("Contraseña incorrecta"); return; }
+    if (!u._fromBD) { setLerr("Usuario no disponible sin conexión"); return; }
+    // v3.1: la contraseña se verifica en la BD (RPC security definer) — nunca sale el hash al navegador
+    const _verif = await dbUsuarios.verificarLogin(u.nombre, lpw);
+    if (!_verif || !_verif.ok) { setLerr("Contraseña incorrecta"); return; }
 
     // v3: conceptos ya cargados desde BD sin cifrado — solo asegurar que el admin ve precios
     // Los técnicos ya tienen concs con precios null desde la carga inicial
