@@ -193,7 +193,7 @@ function _rowToReg(row) {
     estadoCertif: row.estado_certif || null,
     facturado: !!row.factura_id,
     facturaId: row.factura_id || null,
-    facturaRef: null, // se resuelve si es necesario
+    facturaRef: window._naFacturaNumMap?.[row.factura_id] || null,
     esGrupo: !!row.es_grupo,
     lineasGrupo: [],
     creadoPor: window._naTecnicoNameMap?.[row.creado_por_id] || '',
@@ -391,7 +391,7 @@ function _rowToInforme(row) {
     proyectoId: row.proyecto_id || null,
     importeTotal: row.importe_total || null,
     estado: row.factura_id ? 'facturado' : (row.estado || 'borrador'),
-    facturaRef: null,  // se resuelve si es necesario
+    facturaRef: window._naFacturaNumMap?.[row.factura_id] || null,
     regIds: [],  // na_informes no almacena reg_ids directamente
     creadoEn: row.creado_en,
     tipo: 'actividad'
@@ -3978,6 +3978,11 @@ function App() {
           creadoEn: r.creado_en
         }));
         setProyectos(proyectosV3);
+
+        // 3b. Mapa id→número de factura, necesario para resolver facturaRef en registros e informes
+        const facturaNumMap = {};
+        (factRows || []).forEach(f => { facturaNumMap[f.id] = f.numero || ''; });
+        window._naFacturaNumMap = facturaNumMap;
 
         // 4. Registros — cargar líneas de grupos en paralelo
         const regsBase = (regRows || []).map(_rowToReg);
