@@ -4056,15 +4056,15 @@ function App() {
           nif: r.nif || '',
           codigoRef: r.codigo || '',
           direccion: (r.direccion_linea1 || '') + (r.direccion_linea2 ? ', ' + r.direccion_linea2 : ''),
-          poblacion: (r.cp ? r.cp + ' ' : '') + (r.ciudad || ''),
+          poblacion: (r.cp ? r.cp + ' - ' : '') + (r.ciudad || ''),
           iban: r.iban || '',
           emailFact: r.email_facturacion || '',
           diasVto: r.dias_vto_defecto || 30,
           metodoPago: r.metodo_pago_defecto || 'Transferencia bancaria',
-          serieDefecto: 'DR',
-          ivaDefecto: 21,
-          conceptoCliente: '',
-          formaPago: 'Según contrato'
+          serieDefecto: r.serie_defecto || 'DR',
+          ivaDefecto: r.iva_defecto != null ? r.iva_defecto : 21,
+          conceptoCliente: r.concepto_cliente || '',
+          formaPago: r.forma_pago || 'Según contrato'
         }));
         setClientes(clientesV3.length ? clientesV3 : CLIENTES_DEF);
 
@@ -4293,14 +4293,25 @@ function App() {
       clearTimeout(window._bkCli);
       window._bkCli = setTimeout(async () => {
         try {
-          const rows = clientes.map(c => ({
-            id: c.id, nombre: c.nombre || '', nif: c.nif || null,
-            codigo: c.codigoRef || null,
-            direccion_linea1: c.direccion || null,
-            email_facturacion: c.emailFact || null,
-            dias_vto_defecto: c.diasVto || 30,
-            metodo_pago_defecto: c.metodoPago || 'Transferencia bancaria'
-          }));
+          const rows = clientes.map(c => {
+            const pobl = (c.poblacion || '').trim();
+            const m = pobl.match(/^(\d{4,5})\s*-?\s*(.*)$/);
+            return {
+              id: c.id, nombre: c.nombre || '', nif: c.nif || null,
+              codigo: c.codigoRef != null ? c.codigoRef : '',
+              direccion_linea1: c.direccion || null,
+              cp: m ? m[1] : null,
+              ciudad: m ? (m[2] || null) : (pobl || null),
+              iban: c.iban || null,
+              email_facturacion: c.emailFact || null,
+              dias_vto_defecto: c.diasVto || 30,
+              metodo_pago_defecto: c.metodoPago || 'Transferencia bancaria',
+              serie_defecto: c.serieDefecto || 'DR',
+              iva_defecto: c.ivaDefecto != null ? c.ivaDefecto : 21,
+              concepto_cliente: c.conceptoCliente || null,
+              forma_pago: c.formaPago || null
+            };
+          });
           await _sb('/rest/v1/na_clientes', { method: 'POST', body: JSON.stringify(rows), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } });
         } catch(e) { console.error('[NorAcuaV3] persistencia clientes:', e); }
       }, 1000);
