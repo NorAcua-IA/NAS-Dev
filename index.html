@@ -196,7 +196,7 @@ function _rowToReg(row) {
     facturaRef: null, // se resuelve si es necesario
     esGrupo: !!row.es_grupo,
     lineasGrupo: [],
-    creadoPor: row.creado_por_id || '',
+    creadoPor: window._naTecnicoNameMap?.[row.creado_por_id] || '',
     createdAt: row.creado_en || row.fecha,
     ofertaId: row.oferta_id || null,
     po: row.po || '',
@@ -3716,6 +3716,7 @@ function App() {
   const [series, setSeries] = useState(SERIES_DEF);
   const [facturas, setFacturas] = useState([]);
   const [estaciones, setEstaciones] = useState([]);
+  const [estMeta, setEstMeta] = useState({}); // nombre -> {zona, clienteId}
   const [ofertas, setOfertas] = useState([]);
   const safeOfertas = () => Array.isArray(ofertas) ? ofertas : [];
   const [cfgOfertas, setCfgOfertas] = useState(CFG_OFERTAS_DEF);
@@ -3804,6 +3805,8 @@ function App() {
   const [capFiltro, setCapFiltro] = useState("");
   const [precFiltroActivos, setPrecFiltroActivos] = useState(true); // true = solo activos, false = todos
   const [nuevaES, setNuevaES] = useState("");
+  const [nuevaESZona, setNuevaESZona] = useState("");
+  const [nuevaESCliente, setNuevaESCliente] = useState("");
   const [editDoc, setEditDoc] = useState(null);
   const [editMode, setEditMode] = useState("new");
   const [fechaWarn, setFechaWarn] = useState(null);
@@ -4115,6 +4118,11 @@ function App() {
         window._naEstNomMap = estNomMap;
         const estV3 = (estRows || []).map(r => r.nombre || r.id);
         setEstaciones(estV3);
+        const estMetaV3 = {};
+        (estRows || []).forEach(r => {
+          if (r.nombre) estMetaV3[r.nombre] = { zona: r.zona || '', clienteId: r.cliente_id || null };
+        });
+        setEstMeta(estMetaV3);
 
         // 10b. Resolver nombres de estación y responsable en proyectos
         const respNomMap = {};
@@ -4358,12 +4366,17 @@ function App() {
       clearTimeout(window._bkEst);
       window._bkEst = setTimeout(async () => {
         try {
-          const rows = estaciones.map(nombre => ({ id: (nombre||'').toLowerCase().replace(/[^a-z0-9]/gi,'_').slice(0,50), nombre }));
+          const rows = estaciones.map(nombre => ({
+            id: (nombre||'').toLowerCase().replace(/[^a-z0-9]/gi,'_').slice(0,50),
+            nombre,
+            zona: estMeta[nombre]?.zona || null,
+            cliente_id: estMeta[nombre]?.clienteId || null
+          }));
           await _sb('/rest/v1/na_estaciones', { method: 'POST', body: JSON.stringify(rows), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } });
         } catch(e) { console.error('[NorAcuaV3] persistencia estaciones:', e); }
       }, 1500);
     }
-  }, [estaciones, loading]);
+  }, [estaciones, estMeta, loading]);
 
   useEffect(() => {
     if (!loading && Array.isArray(ofertas) && ofertas.length > 0) {
@@ -4497,6 +4510,18 @@ function App() {
     setLerr("");
     setLpw("");
     setFase("app");
+    // Reiniciar navegación según rol — evita que quede un módulo/vista de una sesión
+    // anterior (p.ej. un admin en HSSE·Histórico) visible al entrar otro usuario
+    // en la misma pestaña del navegador.
+    if (u.rol === "admin") {
+      setModulo("dashboard");
+    } else {
+      setModulo("trabajos");
+      setView("registro");
+    }
+    setViewH("registro");
+    setViewF("lista");
+    setViewO(u.rol === "admin" ? "lista" : "mispropuestas");
 
     // Restaurar carpeta de backups en silencio
     tryRestoreBackupFolder().then(ok => { if(ok) console.log('[NorAcuaV3] Carpeta de backups activa'); });
@@ -4655,7 +4680,10 @@ function App() {
     if (!nuevaES.trim()) return;
     const n = nuevaES.trim();
     if (!estaciones.includes(n)) setEstaciones(e => [...e, n].sort());
+    setEstMeta(m => ({ ...m, [n]: { zona: nuevaESZona || '', clienteId: nuevaESCliente || null } }));
     setNuevaES("");
+    setNuevaESZona("");
+    setNuevaESCliente("");
     setMNuevaES(false);
   };
   const addProy = () => {
@@ -12600,6 +12628,18 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
     onChange: setNuevaES,
     placeholder: "Ej: ES Alcal\xE1 Norte",
     req: true
+  }), /*#__PURE__*/React.createElement(Sel, {
+    label: "Zona",
+    value: nuevaESZona,
+    onChange: setNuevaESZona,
+    options: ZONAS.map(z => ({ v: z, l: z })),
+    ph: "Seleccionar..."
+  }), /*#__PURE__*/React.createElement(Sel, {
+    label: "Cliente",
+    value: nuevaESCliente,
+    onChange: setNuevaESCliente,
+    options: clientes.map(c => ({ v: c.id, l: c.nombre })),
+    ph: "Seleccionar..."
   }), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
@@ -13102,8 +13142,8 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
         );
       })()
     )),
-    /* INFORMES HSSE */
-    viewH==="informes" && React.createElement(React.Fragment, null,
+    /* INFORMES HSSE — solo admin */
+    viewH==="informes" && isAdmin && React.createElement(React.Fragment, null,
       React.createElement("div",{style:{display:"flex",gap:6,marginBottom:14}},
         React.createElement("button",{onClick:function(){},style:{background:"#00c8c8",color:"#fff",border:"none",borderRadius:5,padding:"5px 14px",cursor:"pointer",fontSize:11,fontWeight:600}},"Nuevo informe"),
         React.createElement("button",{onClick:function(){setViewH("hssehist");},style:{background:"transparent",border:"1px solid #dde2e8",borderRadius:5,padding:"5px 14px",cursor:"pointer",fontSize:11,fontWeight:600,color:"#555e66"}},"Hist\u00F3rico ("+hsseHist.length+")")
@@ -13167,8 +13207,8 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
           "ℹ El informe se descarga como HTML para imprimir/enviar a BP para aprobación. Una vez aprobado, usa el botón de facturación."
         )
     ),
-    /* HISTORICO INFORMES HSSE */
-    viewH==="hssehist" && React.createElement(React.Fragment, null,
+    /* HISTORICO INFORMES HSSE — solo admin (contiene datos económicos) */
+    viewH==="hssehist" && isAdmin && React.createElement(React.Fragment, null,
       React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}},
         React.createElement("h2",{style:{fontSize:17,fontWeight:700}},"Hist\u00F3rico de informes HSSE"),
         React.createElement("button",{onClick:function(){setViewH("informes");},style:{background:"#00c8c8",color:"#fff",border:"none",borderRadius:6,padding:"6px 14px",cursor:"pointer",fontSize:12,fontWeight:600}},"＋ Nuevo informe")
@@ -13266,8 +13306,8 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
         React.createElement("iframe",{srcDoc:mHssePrev.html,style:{flex:1,border:"none",borderRadius:"0 0 12px 12px"},title:"preview"})
       )
     ),
-    /* CONFIG HSSE */
-    viewH==="config" && React.createElement(React.Fragment, null,
+    /* CONFIG HSSE — solo admin */
+    viewH==="config" && isAdmin && React.createElement(React.Fragment, null,
       React.createElement("h2",{style:{fontSize:17,fontWeight:700,marginBottom:14}},"Configuración HSSE"),
       /* Tipos actividad */
       React.createElement("div",{style:{background:"#fff",borderRadius:10,border:"1px solid #dde2e8",padding:16,marginBottom:12}},
