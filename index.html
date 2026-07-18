@@ -334,6 +334,19 @@ function _rowToHsse(row) {
 }
 
 // Convierte objeto HSSE interno a fila v3
+// Resuelve el precio/hora HSSE vigente para una zona en una fecha dada,
+// según el historial de tarifas (window._naHsseTarifas, cargado al inicio).
+// Si no hay ninguna tarifa que cubra esa fecha, cae al precio de CENTRO del
+// concepto catálogo "Supervisor itinerante" como último recurso.
+function _naPrecioHsseVigente(zona, fecha) {
+  const tarifas = window._naHsseTarifas || [];
+  const candidatas = tarifas.filter(t => t.zona === zona && (!fecha || t.vigenteDesde <= fecha));
+  if (candidatas.length) {
+    candidatas.sort((a, b) => b.vigenteDesde.localeCompare(a.vigenteDesde));
+    return candidatas[0].precioHora;
+  }
+  return window._naConceptoSupervisorPrecio ?? null;
+}
 function _hsseToRow(sup) {
   // na_hsse_supervisiones real columns: tipo, zona, fecha, horas_facturables, datos_supervision (jsonb), estado, po
   // Resolver el supervisor elegido en la UI (texto) contra usuarios internos o técnicos HSSE externos
@@ -353,7 +366,7 @@ function _hsseToRow(sup) {
     // Toda supervisión HSSE se factura bajo el mismo concepto fijo "Supervisor itinerante"
     // (BP 2023, legacy_id 10.20). Si el objeto no trae ya un concepto/precio, se usa ese por defecto.
     concepto_id: sup.conceptoId || window._naConceptoSupervisorId || null,
-    precio_hora: sup.precioHora != null ? sup.precioHora : (window._naConceptoSupervisorPrecio ?? null),
+    precio_hora: sup.precioHora != null ? sup.precioHora : _naPrecioHsseVigente(sup.zona || '', sup.fecha || null),
     datos_supervision: {
       site: sup.site || '',
       tipoActividad: sup.tipoActividad || '',
@@ -3724,6 +3737,7 @@ function App() {
   const [cfgOfertas, setCfgOfertas] = useState(CFG_OFERTAS_DEF);
   // HSSE v2.7
   const [hsseSups, setHsseSups] = useState([]);
+  const [hsseTarifas, setHsseTarifas] = useState([]);
   const [hsseInfCounter, setHsseInfCounter] = useState(1);
   const [hsseHist, setHsseHist] = useState([]);
   const [hsseCfg, setHsseCfg] = useState({tiposActividad:["Obra menor mantenimiento","Itinerante","Obra menor","Obra mayor"],preciosPorZona:{CENTRO:0,NORTE:0,"CATALUÑA":0,BALEARES:0,OTROS:0},tecnicosExternos:[],poAnual:"",clienteIdBP:""});
@@ -3925,6 +3939,13 @@ function App() {
         const cfgMap = {};
         cfgRowsV3.forEach(r => { cfgMap[r.clave] = r.valor; });
         window._naCfgLoaded = cfgMap;
+
+        // 1c. Tarifas HSSE por zona con vigencia por fecha
+        let tarifasRowsV3 = [];
+        try { tarifasRowsV3 = await _sb('/rest/v1/na_hsse_tarifas?order=vigente_desde.asc') || []; } catch(e) { console.warn('[NorAcuaV3] na_hsse_tarifas no disponible aún:', e.message); }
+        const tarifasV3 = tarifasRowsV3.map(t => ({ id: t.id, zona: t.zona, precioHora: Number(t.precio_hora), vigenteDesde: t.vigente_desde }));
+        window._naHsseTarifas = tarifasV3;
+        setHsseTarifas(tarifasV3);
         if (cfgMap.hsseCfg) setHsseCfg(c => ({ ...c, ...cfgMap.hsseCfg, tecnicosExternos: tecnicosHsseV3.map(t => t.nombre) }));
         else setHsseCfg(c => ({ ...c, tecnicosExternos: tecnicosHsseV3.map(t => t.nombre) }));
 
@@ -4491,6 +4512,21 @@ function App() {
       }, 1000);
     }
   }, [hsseSups, loading]);
+
+  useEffect(() => {
+    if (!loading) {
+      clearTimeout(window._bkHsseTarifas);
+      window._bkHsseTarifas = setTimeout(async () => {
+        try {
+          window._naHsseTarifas = hsseTarifas;
+          const rows = hsseTarifas.map(t => ({
+            id: t.id, zona: t.zona, precio_hora: t.precioHora, vigente_desde: t.vigenteDesde
+          }));
+          if (rows.length) await _sb('/rest/v1/na_hsse_tarifas', { method: 'POST', body: JSON.stringify(rows), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } });
+        } catch(e) { console.error('[NorAcuaV3] persistencia hsseTarifas:', e); }
+      }, 1000);
+    }
+  }, [hsseTarifas, loading]);
 
   useEffect(() => {
     if (!loading) {
@@ -8367,15 +8403,34 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
     label: t,
     onDel: () => delTr(t)
   })))), /*#__PURE__*/React.createElement(Sec, {
-    title: "Precio Supervisión HSSE (€/hora)"
-  }, ["CENTRO","NORTE","CATALUÑA","BALEARES","OTROS"].map(z => React.createElement("div", {key:z, style:{display:"flex",alignItems:"center",gap:10,marginBottom:7}},
-    React.createElement("span", {style:{fontSize:12,fontWeight:600,width:100,flexShrink:0}}, z),
-    React.createElement("input", {type:"number", min:"0", step:"0.01",
-      value: hsseCfg.preciosPorZona&&hsseCfg.preciosPorZona[z]!=null ? hsseCfg.preciosPorZona[z] : "",
-      onChange: e => setHsseCfg(c => ({...c, preciosPorZona:{...(c.preciosPorZona||{}), [z]: Number(e.target.value)||0}})),
-      style:{width:100,padding:"4px 8px",border:"1px solid #dde2e8",borderRadius:5,fontSize:12,fontFamily:"inherit",background:"#f9fafb",outline:"none"}}),
-    React.createElement("span", {style:{fontSize:11,color:"#8a9199"}}, "€/hora")
-  ))), /*#__PURE__*/React.createElement(Sec, {
+    title: "Precio Supervisión HSSE (€/hora) — por zona, con vigencia por fecha"
+  }, ["CENTRO","NORTE","CATALUÑA","BALEARES","OTROS"].map(z => {
+    const hist = hsseTarifas.filter(t => t.zona === z).sort((a,b) => b.vigenteDesde.localeCompare(a.vigenteDesde));
+    const actual = hist[0];
+    return React.createElement("div", {key:z, style:{marginBottom:14, paddingBottom:10, borderBottom:"1px solid #eee"}},
+      React.createElement("div", {style:{display:"flex",alignItems:"center",gap:10,marginBottom:4}},
+        React.createElement("span", {style:{fontSize:12,fontWeight:600,width:100,flexShrink:0}}, z),
+        React.createElement("span", {style:{fontSize:13,fontWeight:700,color:"#1c3e5e"}}, actual ? fmtN(actual.precioHora)+" €/h" : "— sin tarifa —"),
+        actual && React.createElement("span", {style:{fontSize:10,color:"#8a9199"}}, "vigente desde " + fmtD(actual.vigenteDesde))
+      ),
+      hist.length > 1 && React.createElement("div", {style:{fontSize:10,color:"#8a9199",marginBottom:4}},
+        "Histórico: " + hist.slice(1).map((t,i) => fmtN(t.precioHora)+"€/h hasta "+fmtD(hist[i].vigenteDesde)).join(", ")
+      ),
+      React.createElement("div", {style:{display:"flex",alignItems:"center",gap:6}},
+        React.createElement("input", {type:"number", min:"0", step:"0.01", id:"nuevaTarifaPrecio_"+z, placeholder:"Nuevo precio", style:{width:90,padding:"4px 8px",border:"1px solid #dde2e8",borderRadius:5,fontSize:11}}),
+        React.createElement("input", {type:"date", id:"nuevaTarifaFecha_"+z, style:{padding:"4px 6px",border:"1px solid #dde2e8",borderRadius:5,fontSize:11}}),
+        React.createElement("button", {onClick:() => {
+          const p = document.getElementById("nuevaTarifaPrecio_"+z);
+          const f = document.getElementById("nuevaTarifaFecha_"+z);
+          const precio = Number(p.value);
+          const fecha = f.value;
+          if (!precio || !fecha) { alert("Indica precio y fecha de vigencia."); return; }
+          setHsseTarifas(ts => [...ts, {id: uuid(), zona: z, precioHora: precio, vigenteDesde: fecha}]);
+          p.value = ""; f.value = "";
+        }, style:{background:"#00c8c8",color:"#fff",border:"none",borderRadius:5,padding:"4px 10px",cursor:"pointer",fontSize:11,fontWeight:600}}, "+ Nueva tarifa")
+      )
+    );
+  })), /*#__PURE__*/React.createElement(Sec, {
     title: "Responsables de cliente",
     action: /*#__PURE__*/React.createElement(Btn, {
       sm: true,
@@ -13413,14 +13468,34 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
           React.createElement("button",{onClick:function(){var el=document.getElementById("newTipoHsse");var v=el&&el.value&&el.value.trim();if(v&&!(hsseCfg.tiposActividad||[]).includes(v)){setHsseCfg(function(c){return Object.assign({},c,{tiposActividad:(c.tiposActividad||[]).concat([v])});});if(el)el.value="";}},style:{background:"#00c8c8",color:"#fff",border:"none",borderRadius:5,padding:"6px 12px",cursor:"pointer",fontSize:11,fontWeight:600}},"\uFF0B Añadir")
         )
       ),
-      /* Precio por hora por zona */
+      /* Precio por hora por zona — histórico con vigencia por fecha */
       React.createElement("div",{style:{background:"#fff",borderRadius:10,border:"1px solid #dde2e8",padding:16,marginBottom:12}},
-        React.createElement("div",{style:{fontWeight:700,fontSize:13,marginBottom:10}},"Precio €/hora por zona"),
+        React.createElement("div",{style:{fontWeight:700,fontSize:13,marginBottom:10}},"Precio €/hora por zona (con vigencia por fecha)"),
         ["CENTRO","NORTE","CATALUÑA","BALEARES","OTROS"].map(function(z){
-          return React.createElement("div",{key:z,style:{display:"flex",alignItems:"center",gap:10,marginBottom:7}},
-            React.createElement("span",{style:{fontSize:12,fontWeight:600,width:100,flexShrink:0}},z),
-            React.createElement("input",{type:"number",min:"0",step:"0.01",value:hsseCfg.preciosPorZona&&hsseCfg.preciosPorZona[z]!=null?hsseCfg.preciosPorZona[z]:"",onChange:function(e){var val=Number(e.target.value)||0;setHsseCfg(function(c){var pz=Object.assign({},c.preciosPorZona||{});pz[z]=val;return Object.assign({},c,{preciosPorZona:pz});});},style:{width:120,padding:"5px 9px",border:"1px solid #dde2e8",borderRadius:5,fontSize:12,fontFamily:"inherit",background:"#f9fafb",outline:"none"}}),
-            React.createElement("span",{style:{fontSize:11,color:"#8a9199"}},"€/hora")
+          var hist=hsseTarifas.filter(function(t){return t.zona===z;}).sort(function(a,b){return b.vigenteDesde.localeCompare(a.vigenteDesde);});
+          var actual=hist[0];
+          return React.createElement("div",{key:z,style:{marginBottom:14,paddingBottom:10,borderBottom:"1px solid #eee"}},
+            React.createElement("div",{style:{display:"flex",alignItems:"center",gap:10,marginBottom:4}},
+              React.createElement("span",{style:{fontSize:12,fontWeight:600,width:100,flexShrink:0}},z),
+              React.createElement("span",{style:{fontSize:13,fontWeight:700,color:"#1c3e5e"}},actual?fmtN(actual.precioHora)+" €/h":"— sin tarifa —"),
+              actual&&React.createElement("span",{style:{fontSize:10,color:"#8a9199"}},"vigente desde "+fmtD(actual.vigenteDesde))
+            ),
+            hist.length>1&&React.createElement("div",{style:{fontSize:10,color:"#8a9199",marginBottom:4}},
+              "Histórico: "+hist.slice(1).map(function(t,i){return fmtN(t.precioHora)+"€/h hasta "+fmtD(hist[i].vigenteDesde);}).join(", ")
+            ),
+            React.createElement("div",{style:{display:"flex",alignItems:"center",gap:6}},
+              React.createElement("input",{type:"number",min:"0",step:"0.01",id:"nuevaTarifaPrecio2_"+z,placeholder:"Nuevo precio",style:{width:90,padding:"4px 8px",border:"1px solid #dde2e8",borderRadius:5,fontSize:11}}),
+              React.createElement("input",{type:"date",id:"nuevaTarifaFecha2_"+z,style:{padding:"4px 6px",border:"1px solid #dde2e8",borderRadius:5,fontSize:11}}),
+              React.createElement("button",{onClick:function(){
+                var p=document.getElementById("nuevaTarifaPrecio2_"+z);
+                var f=document.getElementById("nuevaTarifaFecha2_"+z);
+                var precio=Number(p.value);
+                var fecha=f.value;
+                if(!precio||!fecha){alert("Indica precio y fecha de vigencia.");return;}
+                setHsseTarifas(function(ts){return ts.concat([{id:uuid(),zona:z,precioHora:precio,vigenteDesde:fecha}]);});
+                p.value="";f.value="";
+              },style:{background:"#00c8c8",color:"#fff",border:"none",borderRadius:5,padding:"4px 10px",cursor:"pointer",fontSize:11,fontWeight:600}},"+ Nueva tarifa")
+            )
           );
         })
       ),
@@ -13555,11 +13630,11 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
             if(site&&!estaciones.includes(site))setEstaciones(function(p){return p.concat([site]).sort();});
             if(mHsseEdit){
               var editId=mHsseEdit.id;
-              var saveData=Object.assign({},data,{site:site,horasOrig:data.horasOrig||data.horas,horasAdmin:data.horasAdmin!=null?data.horasAdmin:data.horas});
+              var saveData=Object.assign({},data,{site:site,horasOrig:data.horasOrig||data.horas,horasAdmin:data.horasAdmin!=null?data.horasAdmin:data.horas,precioHora:data.precioHora!=null?data.precioHora:_naPrecioHsseVigente(data.zona||"",data.fecha||null)});
               setHsseSups(function(p){return p.map(function(x){return x.id===editId?saveData:x;});});
               setMHsseEdit(null);
             } else {
-              setHsseSups(function(p){return [{site:site,tipoActividad:data.tipoActividad||"",pctAuditoria:data.pctAuditoria||"",obraConSupervision:data.obraConSupervision||"",fecha:data.fecha,horas:data.horas,horasOrig:data.horas,horasAdmin:data.horas,supervisor:data.supervisor||"",encargo:data.encargo||"",zona:data.zona||"",incidencias:data.incidencias||"No",motivoSupervision:data.motivoSupervision||"",empresa:data.empresa||"",comentarios:data.comentarios||"",id:uuid(),estado:"pendiente",creadoPor:"admin",fechaCreacion:new Date().toISOString()}].concat(p);});
+              setHsseSups(function(p){return [{site:site,tipoActividad:data.tipoActividad||"",pctAuditoria:data.pctAuditoria||"",obraConSupervision:data.obraConSupervision||"",fecha:data.fecha,horas:data.horas,horasOrig:data.horas,horasAdmin:data.horas,supervisor:data.supervisor||"",encargo:data.encargo||"",zona:data.zona||"",incidencias:data.incidencias||"No",motivoSupervision:data.motivoSupervision||"",empresa:data.empresa||"",comentarios:data.comentarios||"",precioHora:_naPrecioHsseVigente(data.zona||"",data.fecha||null),id:uuid(),estado:"pendiente",creadoPor:"admin",fechaCreacion:new Date().toISOString()}].concat(p);});
               setFHs({site:"",tipoActividad:"",pctAuditoria:"",obraConSupervision:"",fecha:today(),horas:"",supervisor:"",encargo:"",zona:"",incidencias:"No",motivoSupervision:"",empresa:"",comentarios:""});
               setMHsseReg(false);
             }
