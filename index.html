@@ -199,6 +199,8 @@ function _rowToReg(row) {
     creadoPor: window._naTecnicoNameMap?.[row.creado_por_id] || '',
     createdAt: row.creado_en || row.fecha,
     ofertaId: row.oferta_id || null,
+    ofertaCodigo: window._naOfertaCodMap?.[row.oferta_id] || '',
+    ofertaCodigos: window._naOfertaCodMap?.[row.oferta_id] ? [window._naOfertaCodMap[row.oferta_id]] : [],
     po: row.po || '',
     precioManual: row.precio_unitario != null ? row.precio_unitario : null,
     descuento: row.descuento_pct || 0
@@ -3983,6 +3985,12 @@ function App() {
         const facturaNumMap = {};
         (factRows || []).forEach(f => { facturaNumMap[f.id] = f.numero || ''; });
         window._naFacturaNumMap = facturaNumMap;
+
+        // 3c. Mapa id→código de oferta, necesario para resolver ofertaCodigo en registros
+        // (toda la UI de certificación/revisión filtra y colorea por ofertaCodigo, no por ofertaId)
+        const ofertaCodMap = {};
+        (ofertaRows || []).forEach(o => { ofertaCodMap[o.id] = o.codigo || ''; });
+        window._naOfertaCodMap = ofertaCodMap;
 
         // 4. Registros — cargar líneas de grupos en paralelo
         const regsBase = (regRows || []).map(_rowToReg);
