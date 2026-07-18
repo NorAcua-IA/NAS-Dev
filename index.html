@@ -4250,6 +4250,38 @@ function App() {
           for (let i = 0; i < rows.length; i += 100) {
             await _sb('/rest/v1/na_registros', { method: 'POST', body: JSON.stringify(rows.slice(i, i+100)), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } });
           }
+          // v3.1 fix crítico: sincronizar también las líneas de los registros de grupo
+          // (na_lineas_registro). Antes solo se guardaba la cabecera del registro —
+          // cualquier item añadido/editado dentro de una actividad de grupo se perdía
+          // al recargar, porque nunca llegaba a escribirse en la BD.
+          const gruposConLineas = registros.filter(r => r.esGrupo && Array.isArray(r.lineasGrupo) && r.lineasGrupo.length > 0);
+          if (gruposConLineas.length) {
+            const idsGrupo = gruposConLineas.map(r => r.id);
+            for (let i = 0; i < idsGrupo.length; i += 50) {
+              await _sb('/rest/v1/na_lineas_registro?registro_id=in.(' + idsGrupo.slice(i, i+50).join(',') + ')', { method: 'DELETE' });
+            }
+            const lineaRows = [];
+            gruposConLineas.forEach(reg => {
+              reg.lineasGrupo.forEach((l, i) => {
+                lineaRows.push({
+                  id: l.id || (reg.id + '_l' + i),
+                  registro_id: reg.id,
+                  concepto_id: l.conceptoId || null,
+                  cantidad: parseFloat(l.cantidad) || 1,
+                  cantidad_certif: l.cantCertif != null ? l.cantCertif : null,
+                  precio_unitario: l.precioManual != null ? l.precioManual : 0,
+                  descuento_pct: l.descuento || 0,
+                  observaciones: l.observaciones || l.comentario || '',
+                  certif_enviada: !!l.certifEnviada,
+                  certif_aprobada: !!l.certifAprobada,
+                  orden: i
+                });
+              });
+            });
+            for (let i = 0; i < lineaRows.length; i += 200) {
+              await _sb('/rest/v1/na_lineas_registro', { method: 'POST', body: JSON.stringify(lineaRows.slice(i, i+200)), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } });
+            }
+          }
         } catch(e) { console.error('[NorAcuaV3] persistencia registros:', e); }
       }, 1200);
     }
