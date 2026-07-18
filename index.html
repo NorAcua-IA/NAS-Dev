@@ -3915,7 +3915,18 @@ function App() {
         window._naTecnicoHsseNameMap = tecHsseNomMap;
         window._naTecnicoHsseIdMap = {};
         tecnicosHsseV3.forEach(t => { window._naTecnicoHsseIdMap[t.nombre] = t.id; });
-        setHsseCfg(c => ({ ...c, tecnicosExternos: tecnicosHsseV3.map(t => t.nombre) }));
+
+        // 1b. Configuración persistida (contador de ofertas, tarifas HSSE, etc.)
+        // v3.1 fix crítico: esto antes no se cargaba ni se guardaba nunca — cualquier
+        // cambio en Config (precio/hora HSSE, contador de ofertas, PO anual...) se
+        // perdía siempre al recargar.
+        let cfgRowsV3 = [];
+        try { cfgRowsV3 = await _sb('/rest/v1/na_config?select=clave,valor') || []; } catch(e) { console.warn('[NorAcuaV3] na_config no disponible aún:', e.message); }
+        const cfgMap = {};
+        cfgRowsV3.forEach(r => { cfgMap[r.clave] = r.valor; });
+        window._naCfgLoaded = cfgMap;
+        if (cfgMap.hsseCfg) setHsseCfg(c => ({ ...c, ...cfgMap.hsseCfg, tecnicosExternos: tecnicosHsseV3.map(t => t.nombre) }));
+        else setHsseCfg(c => ({ ...c, tecnicosExternos: tecnicosHsseV3.map(t => t.nombre) }));
 
         // Mapear a formato interno — indexar por nombre, lowercase y legacy keys
         const usrsMap = {};
@@ -4154,7 +4165,8 @@ function App() {
         // 12. cfgOfertas — leer contador de la serie principal desde na_series
         // En v3 el contador vive en na_series; aquí calculamos el nº de oferta actual
         const lastOferta = (ofertaRows || []).sort((a,b) => (b.creado_en||'').localeCompare(a.creado_en||''))[0];
-        const cfgV3 = { contadorActual: (ofertaRows||[]).length, año: new Date().getFullYear() };
+        const cfgV3Calc = { contadorActual: (ofertaRows||[]).length, año: new Date().getFullYear() };
+        const cfgV3 = cfgMap.cfgOfertas ? { ...cfgV3Calc, ...cfgMap.cfgOfertas } : cfgV3Calc;
         setCfgOfertas(cfgV3);
 
         // 13. HSSE supervisiones
@@ -4455,7 +4467,16 @@ function App() {
     }
   }, [ofertas, loading]);
 
-  useEffect(() => {}, [cfgOfertas, loading]);
+  useEffect(() => {
+    if (!loading) {
+      clearTimeout(window._bkCfgOf);
+      window._bkCfgOf = setTimeout(async () => {
+        try {
+          await _sb('/rest/v1/na_config', { method: 'POST', body: JSON.stringify({ clave: 'cfgOfertas', valor: cfgOfertas }), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } });
+        } catch(e) { console.error('[NorAcuaV3] persistencia cfgOfertas:', e); }
+      }, 1000);
+    }
+  }, [cfgOfertas, loading]);
 
   useEffect(() => {
     if (!loading && hsseSups.length > 0) {
@@ -4471,7 +4492,18 @@ function App() {
     }
   }, [hsseSups, loading]);
 
-  useEffect(() => {}, [hsseCfg, hsseInfCounter, loading]);
+  useEffect(() => {
+    if (!loading) {
+      clearTimeout(window._bkHsseCfg);
+      window._bkHsseCfg = setTimeout(async () => {
+        try {
+          // tecnicosExternos se gestiona aparte vía na_tecnicos_hsse (no duplicar aquí)
+          const { tecnicosExternos, ...cfgSinTecnicos } = hsseCfg;
+          await _sb('/rest/v1/na_config', { method: 'POST', body: JSON.stringify({ clave: 'hsseCfg', valor: cfgSinTecnicos }), headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } });
+        } catch(e) { console.error('[NorAcuaV3] persistencia hsseCfg:', e); }
+      }, 1000);
+    }
+  }, [hsseCfg, loading]);
 
   // hsseHist: persistir en na_informes (nombre con prefijo INF-HSSE- para distinguirlos)
   useEffect(() => {
