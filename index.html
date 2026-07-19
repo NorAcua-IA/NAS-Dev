@@ -5300,7 +5300,7 @@ function App() {
         const factNum = editDoc.numero || "—";
         // v3: actualizar factura_id en na_registros directamente
         _regIds.forEach(rid => {
-          dbRegistros.patch(rid, { factura_id: newFactId, factura_numero: factNum })
+          dbRegistros.patch(rid, { factura_id: newFactId })
             .catch(e => console.error('[NorAcuaV3] link reg→factura:', e));
         });
         setRegistros(regs => regs.map(r =>
