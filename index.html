@@ -5794,7 +5794,7 @@ function App() {
     const lineas = r.lineasGrupo || [];
     const allAprob = lineas.length > 0 && lineas.every(l => l.certifAprobada);
     const allCertifOferta = lineas.length > 0 && lineas.every(l => l.certifOferta);
-    return r.estadoCertif === "finalizado" || allAprob || r.estado === "aprobado" || r.estado === "certif_oferta" || allCertifOferta;
+    return r.estadoCertif === "finalizado" || allAprob || r.estado === "aprobado" || r.estado === "certif_oferta" || allCertifOferta || r.estado === "rechazado";
   }).length;
   const navTrabajos = [{
     k: "registro",
@@ -7542,7 +7542,8 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
       /*#__PURE__*/React.createElement("option", { value: "" }, "Todos los estados"),
       /*#__PURE__*/React.createElement("option", { value: "aprobado" }, "✅ Aprobadas (normal)"),
       /*#__PURE__*/React.createElement("option", { value: "certificado" }, "🏁 Certificadas"),
-      /*#__PURE__*/React.createElement("option", { value: "certif_oferta" }, "🗂 Certif. Oferta")
+      /*#__PURE__*/React.createElement("option", { value: "certif_oferta" }, "🗂 Certif. Oferta"),
+      /*#__PURE__*/React.createElement("option", { value: "rechazado" }, "✗ Rechazadas")
     ),
     /*#__PURE__*/React.createElement("select", {
       value: fArchProy, onChange: e => setFArchProy(e.target.value),
@@ -7583,12 +7584,13 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
       const lineas = r.lineasGrupo || [];
       const allAprob = lineas.length > 0 && lineas.every(l => l.certifAprobada);
       const allCertifOferta = lineas.length > 0 && lineas.every(l => l.certifOferta);
-      if (!(r.estadoCertif === "finalizado" || allAprob || r.estado === "aprobado" || r.estado === "certif_oferta" || allCertifOferta)) return false;
+      if (!(r.estadoCertif === "finalizado" || allAprob || r.estado === "aprobado" || r.estado === "certif_oferta" || allCertifOferta || r.estado === "rechazado")) return false;
       // Filtros
       if (fArchEstado) {
         if (fArchEstado === "aprobado" && r.estado !== "aprobado") return false;
         if (fArchEstado === "certificado" && !(r.estadoCertif === "finalizado" || allAprob)) return false;
         if (fArchEstado === "certif_oferta" && r.estado !== "certif_oferta") return false;
+        if (fArchEstado === "rechazado" && r.estado !== "rechazado") return false;
       }
       if (fArchProy && r.proyectoId !== fArchProy) return false;
       if (fArchSite && gP(r.proyectoId)?.estacion !== fArchSite) return false;
@@ -7654,7 +7656,10 @@ var factVencidas = facturas.filter(function(f){return f.fechaVto&&f.fechaVto<tod
                     esOfertadaArch && r.ofertaCodigo && /*#__PURE__*/React.createElement("span", {
                       style: { fontSize: 10, fontWeight: 700, color: "#7c3aed", background: "#f5f3ff", padding: "1px 6px", borderRadius: 4, border: "1px solid #c4b5fd" }
                     }, "🗂 " + r.ofertaCodigo),
-                    !esOfertadaArch && /*#__PURE__*/React.createElement("span", {
+                    r.estado === "rechazado" && /*#__PURE__*/React.createElement("span", {
+                      style: { fontSize: 10, fontWeight: 700, color: "#991b1b", background: "#fee2e2", padding: "1px 6px", borderRadius: 4, border: "1px solid #fca5a5" }
+                    }, "✗ Rechazada"),
+                    !esOfertadaArch && r.estado !== "rechazado" && /*#__PURE__*/React.createElement("span", {
                       style: { fontSize: 10, fontWeight: 700, color: "#065f46", background: "#a7f3d0", padding: "1px 6px", borderRadius: 4 }
                     }, "✓ Certificada"),
                     esOfertadaArch && /*#__PURE__*/React.createElement("span", {
